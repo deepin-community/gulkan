@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/shaders">
+    <file>texture.vert.spv</file>
+    <file>texture.frag.spv</file>
+    <file>cube.vert.spv</file>
+    <file>cube.frag.spv</file>
+    <file>toy.vert.spv</file>
+    <file>toy.frag.template</file>
+  </gresource>
+</gresources>

@@ -1,0 +1,32 @@
+/*
+ * gulkan
+ * Copyright 2018 Collabora Ltd.
+ * Author: Lubosz Sarnecki <lubosz.sarnecki@collabora.com>
+ * SPDX-License-Identifier: MIT
+ */
+
+#version 460 core
+
+layout (std140, set = 0, binding = 0) uniform block
+{
+  uniform vec3  iResolution;           // viewport resolution (in pixels)
+  uniform float iTime;                 // shader playback time (in seconds)
+  uniform vec4  iMouse;                // mouse pixel coords. xy: current (if MLB down), zw: click
+  uniform vec3  iChannelResolution[4]; // channel resolution (in pixels)
+  uniform float iTimeDelta;            // render time (in seconds)
+  uniform int   iFrame;                // shader playback frame
+  uniform float iChannelTime[4];       // channel playback time (in seconds)
+  uniform vec4  iDate;                 // (year, month, day, time in seconds)
+  uniform float iSampleRate;           // sound sample rate (i.e., 44100)
+};
+
+layout (location = 0) in vec2 in_uv;
+layout (location = 0) out vec4 out_color;
+
+void mainImage (out vec4 fragColor, in vec2 fragCoord);
+
+void main ()
+{
+  mainImage (out_color, in_uv * iResolution.xy);
+}
+

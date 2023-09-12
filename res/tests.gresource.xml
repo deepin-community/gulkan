@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/res">
+    <file>cat_srgb.jpg</file>
+    <file>cat_linear.jpg</file>
+  </gresource>
+</gresources>

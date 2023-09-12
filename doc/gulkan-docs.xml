@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.3//EN"
+               "http://www.oasis-open.org/docbook/xml/4.3/docbookx.dtd"
+[
+  <!ENTITY % local.common.attrib "xmlns:xi  CDATA  #FIXED 'http://www.w3.org/2003/XInclude'">
+]>
+<book id="index">
+  <bookinfo>
+    <title>Gulkan Reference Manual</title>
+    <releaseinfo>
+      <para>This document is the API reference for the Gulkan library.</para>
+      <para>
+        The latest version of Gulkan, as well as the latest version of
+        this API reference, is <ulink role="online-location" url="http://gitlab.com/">available online</ulink>.
+      </para>
+    </releaseinfo>
+  </bookinfo>
+
+  <chapter>
+    <title>Gulkan</title>
+
+    <refsect2 id="overview">
+      <para>
+        Gulkan is a Vulkan wrapper for glib.
+      </para>
+      <para>
+        Gulkan manages Vulkan.
+      </para>
+    </refsect2>
+
+    <xi:include href="xml/gulkan-buffer.xml"/>
+    <xi:include href="xml/gulkan-client.xml"/>
+    <xi:include href="xml/gulkan-descriptor-pool.xml"/>
+    <xi:include href="xml/gulkan-device.xml"/>
+    <xi:include href="xml/gulkan-frame-buffer.xml"/>
+    <xi:include href="xml/gulkan-geometry.xml"/>
+    <xi:include href="xml/gulkan-instance.xml"/>
+    <xi:include href="xml/gulkan-renderer.xml"/>
+    <xi:include href="xml/gulkan-render-pass.xml"/>
+    <xi:include href="xml/gulkan-swapchain-renderer.xml"/>
+    <xi:include href="xml/gulkan-swapchain.xml"/>
+    <xi:include href="xml/gulkan-texture.xml"/>
+    <xi:include href="xml/gulkan-uniform-buffer.xml"/>
+    <xi:include href="xml/gulkan-vertex-buffer.xml"/>
+    <xi:include href="xml/gulkan-cmd-buffer.xml"/>
+    <xi:include href="xml/gulkan-queue.xml"/>
+
+  </chapter>
+  <index id="api-index">
+    <title>API Index</title>
+    <xi:include href="xml/api-index-full.xml"><xi:fallback /></xi:include>
+  </index>
+
+  <!--
+  <xi:include href="xml/annotation-glossary.xml"><xi:fallback /></xi:include>
+  -->
+</book>
