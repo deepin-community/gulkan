@@ -10,18 +10,7 @@
 
 #include <gulkan.h>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
-GulkanClient*
-gulkan_client_new_glfw (void);
-
-GLFWmonitor*
-glfw_window_get_current_monitor (GLFWwindow *window);
-
-void
-glfw_toggle_fullscreen (GLFWwindow *window,
-                        VkOffset2D *position,
-                        VkExtent2D *size);
+GdkPixbuf *
+gdk_load_pixbuf_from_uri (const gchar *uri);
 
 #endif /* COMMON_H_ */

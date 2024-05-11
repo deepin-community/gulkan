@@ -8,34 +8,35 @@
 #ifndef GULKAN_UNIFORM_BUFFER_H_
 #define GULKAN_UNIFORM_BUFFER_H_
 
-#if !defined (GULKAN_INSIDE) && !defined (GULKAN_COMPILATION)
+#if !defined(GULKAN_INSIDE) && !defined(GULKAN_COMPILATION)
 #error "Only <gulkan.h> can be included directly."
 #endif
 
+#include <glib-object.h>
 #include <vulkan/vulkan.h>
 
-#include <glib-object.h>
-
-#include <gulkan-device.h>
-
-#include <graphene.h>
+#include "gulkan-device.h"
 
 G_BEGIN_DECLS
 
-#define GULKAN_TYPE_UNIFORM_BUFFER gulkan_uniform_buffer_get_type()
-G_DECLARE_FINAL_TYPE (GulkanUniformBuffer, gulkan_uniform_buffer,
-                      GULKAN, UNIFORM_BUFFER, GObject)
+#define GULKAN_TYPE_UNIFORM_BUFFER gulkan_uniform_buffer_get_type ()
+G_DECLARE_FINAL_TYPE (GulkanUniformBuffer,
+                      gulkan_uniform_buffer,
+                      GULKAN,
+                      UNIFORM_BUFFER,
+                      GObject)
 
 GulkanUniformBuffer *
-gulkan_uniform_buffer_new (GulkanDevice *device,
-                           VkDeviceSize  size);
+gulkan_uniform_buffer_new (GulkanDevice *device, VkDeviceSize size);
 
 void
-gulkan_uniform_buffer_update (GulkanUniformBuffer *self,
-                              gpointer            *s);
+gulkan_uniform_buffer_update (GulkanUniformBuffer *self, gpointer *s);
 
 VkBuffer
 gulkan_uniform_buffer_get_handle (GulkanUniformBuffer *self);
+
+VkDescriptorBufferInfo *
+gulkan_uniform_buffer_get_descriptor_info (GulkanUniformBuffer *self);
 
 G_END_DECLS
 

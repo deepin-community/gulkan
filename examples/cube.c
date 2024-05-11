@@ -15,21 +15,14 @@
 
 #include <glib.h>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
 #include <gulkan.h>
 
-#include "common/model-renderer.h"
-#include "common/common.h"
-
-G_BEGIN_DECLS
-
 #define GULKAN_TYPE_EXAMPLE gulkan_example_get_type ()
-G_DECLARE_FINAL_TYPE (Example, gulkan_example, GULKAN,
-                      EXAMPLE, ModelRenderer)
-
-G_END_DECLS
+G_DECLARE_FINAL_TYPE (Example,
+                      gulkan_example,
+                      GULKAN,
+                      EXAMPLE,
+                      GulkanSwapchainRenderer)
 
 static const float positions[] = {
   // front
@@ -130,25 +123,41 @@ static const float normals[] = {
   +0.0f, -1.0f, +0.0f  // down
 };
 
+typedef struct
+{
+  float mv_matrix[16];
+  float mvp_matrix[16];
+  float normal_matrix[12];
+} Transformation;
+
+static const gchar *vertex_shader_uri = "/shaders/cube.vert.spv";
+static const gchar *fragment_shader_uri = "/shaders/cube.frag.spv";
+
 static const VkClearColorValue background_color = {
-  .float32 = { 0.05f, 0.05f, 0.05f, 1.0f },
+  .float32 = {0.05f, 0.05f, 0.05f, 1.0f},
 };
 
 struct _Example
 {
-  ModelRenderer parent;
+  GulkanSwapchainRenderer parent;
 
   GulkanVertexBuffer *vb;
 
-  GMainLoop *loop;
-  GLFWwindow *window;
-  gboolean should_quit;
+  GMainLoop    *loop;
+  GulkanWindow *window;
+  gboolean      should_quit;
 
   VkExtent2D last_window_size;
   VkOffset2D last_window_position;
+
+  GulkanUniformBuffer *transformation_ubo;
+
+  GulkanPipeline       *pipeline;
+  GulkanDescriptorSet  *descriptor_set;
+  GulkanDescriptorPool *descriptor_pool;
 };
 
-G_DEFINE_TYPE (Example, gulkan_example, MODEL_TYPE_RENDERER)
+G_DEFINE_TYPE (Example, gulkan_example, GULKAN_TYPE_SWAPCHAIN_RENDERER)
 
 static void
 _finalize (GObject *gobject)
@@ -158,23 +167,28 @@ _finalize (GObject *gobject)
 
   g_object_unref (self->vb);
 
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  gulkan_device_wait_idle (gulkan_context_get_device (context));
+
+  g_object_unref (self->descriptor_set);
+  g_object_unref (self->pipeline);
+  g_object_unref (self->transformation_ubo);
+
   G_OBJECT_CLASS (gulkan_example_parent_class)->finalize (gobject);
 
-  /*
-   * GLFW needs to be destroyed after the surface,
-   * which belongs to GulkanSwapchain.
-   */
-  glfwDestroyWindow (self->window);
-  glfwTerminate ();
+  // Wayland surface needs to be deinited after vk swapchain
+  g_object_unref (self->window);
 }
 
 static void
 gulkan_example_init (Example *self)
 {
   gulkan_renderer_set_extent (GULKAN_RENDERER (self),
-                              (VkExtent2D) { .width = 1280, .height = 720 });
+                              (VkExtent2D){.width = 1280, .height = 720});
   self->should_quit = FALSE;
   self->loop = g_main_loop_new (NULL, FALSE);
+  gulkan_swapchain_renderer_initialize (GULKAN_SWAPCHAIN_RENDERER (self),
+                                        background_color, NULL);
 }
 
 static void
@@ -186,11 +200,11 @@ _update_uniform_buffer (Example *self)
   graphene_matrix_t mv_matrix;
   graphene_matrix_init_identity (&mv_matrix);
 
-  graphene_matrix_rotate_x (&mv_matrix, 45.0f + (0.25f * t));
-  graphene_matrix_rotate_y (&mv_matrix, 45.0f - (0.5f * t));
-  graphene_matrix_rotate_z (&mv_matrix, 10.0f + (0.15f * t));
+  graphene_matrix_rotate_x (&mv_matrix, 45.0f + (0.25f * (float) t));
+  graphene_matrix_rotate_y (&mv_matrix, 45.0f - (0.5f * (float) t));
+  graphene_matrix_rotate_z (&mv_matrix, 10.0f + (0.15f * (float) t));
 
-  graphene_point3d_t pos = { 0.0f, 0.0f, -8.0f };
+  graphene_point3d_t pos = {0.0f, 0.0f, -8.0f};
   graphene_matrix_translate (&mv_matrix, &pos);
 
   float aspect = gulkan_renderer_get_aspect (GULKAN_RENDERER (self));
@@ -200,81 +214,70 @@ _update_uniform_buffer (Example *self)
   graphene_matrix_t mvp_matrix;
   graphene_matrix_multiply (&mv_matrix, &p_matrix, &mvp_matrix);
 
-  Transformation ubo;
+  Transformation ubo = {0};
   graphene_matrix_to_float (&mv_matrix, ubo.mv_matrix);
   graphene_matrix_to_float (&mvp_matrix, ubo.mvp_matrix);
 
   /* The mat3 normalMatrix is laid out as 3 vec4s. */
   memcpy (ubo.normal_matrix, ubo.mv_matrix, sizeof ubo.normal_matrix);
 
-  model_renderer_update_ubo (MODEL_RENDERER (self), (gpointer) &ubo);
+  gulkan_uniform_buffer_update (self->transformation_ubo, (gpointer) &ubo);
 }
 
 static void
-_key_cb (GLFWwindow *window, int key, int scancode, int action, int mods)
+_key_cb (GulkanWindow *window, GulkanKeyEvent *event, Example *self)
 {
-  (void) scancode;
-  (void) mods;
+  (void) self;
 
-  Example *self = (Example *) glfwGetWindowUserPointer (window);
-  if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+  if (!event->is_pressed)
+    {
+      return;
+    }
+
+  if (event->key == XKB_KEY_Escape)
     {
       self->should_quit = TRUE;
     }
-  if (key == GLFW_KEY_F && action == GLFW_PRESS)
+  else if (event->key == XKB_KEY_f)
     {
-      glfw_toggle_fullscreen (window,
-                             &self->last_window_position,
-                             &self->last_window_size);
+      gulkan_window_toggle_fullscreen (window);
     }
 }
 
 static void
-_framebuffer_size_cb (GLFWwindow* window, int w, int h)
+_pointer_position_cb (GulkanWindow        *window,
+                      GulkanPositionEvent *event,
+                      Example             *self)
 {
-  (void) w;
-  (void) h;
-  Example *self = (Example *) glfwGetWindowUserPointer (window);
-  GulkanClient *client = gulkan_renderer_get_client (GULKAN_RENDERER (self));
+  (void) window;
+  (void) self;
+  (void) event;
+  // g_print ("Mouse position: [%d, %d]\n", event->offset.x, event->offset.y);
+}
+
+static void
+_configure_cb (GulkanWindow *window, GulkanConfigureEvent *event, Example *self)
+{
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  VkInstance     instance = gulkan_context_get_instance_handle (context);
 
   VkSurfaceKHR surface;
-
-  VkInstance instance = gulkan_client_get_instance_handle (client);
-  VkResult res = glfwCreateWindowSurface (instance, self->window,
-                                          NULL, &surface);
-  if (res != VK_SUCCESS)
+  if (gulkan_window_create_surface (window, instance, &surface) != VK_SUCCESS)
     {
       g_printerr ("Creating surface failed.");
       return;
     }
 
   if (!gulkan_swapchain_renderer_resize (GULKAN_SWAPCHAIN_RENDERER (self),
-                                         surface))
+                                         surface, event->extent))
     g_warning ("Resize failed.");
 }
 
-static gboolean
-_init_glfw (Example *self)
+static void
+_close_cb (GulkanWindow *window, Example *self)
 {
-  glfwInit ();
-
-  glfwWindowHint (GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint (GLFW_RESIZABLE, TRUE);
-  glfwWindowHint (GLFW_AUTO_ICONIFY, GLFW_FALSE);
-
-  VkExtent2D extent = gulkan_renderer_get_extent (GULKAN_RENDERER (self));
-  self->window =
-    glfwCreateWindow ((int) extent.width, (int) extent.height,
-                      "Gulkan Cube", NULL, NULL);
-
-  if (!self->window)
-    return FALSE;
-
-  glfwSetKeyCallback (self->window, _key_cb);
-
-  glfwSetWindowUserPointer (self->window, self);
-
-  return TRUE;
+  (void) window;
+  g_main_loop_quit (self->loop);
 }
 
 static gboolean
@@ -282,8 +285,9 @@ _iterate (gpointer _self)
 {
   Example *self = (Example *) _self;
 
-  glfwPollEvents ();
-  if (glfwWindowShouldClose (self->window) || self->should_quit)
+  gulkan_window_poll_events (self->window);
+
+  if (self->should_quit)
     {
       g_main_loop_quit (self->loop);
       return FALSE;
@@ -294,72 +298,170 @@ _iterate (gpointer _self)
   return gulkan_renderer_draw (GULKAN_RENDERER (self));
 }
 
+static void
+_pointer_axis_cb (GulkanWindow *window, GulkanAxisEvent *event, Example *self)
+{
+  (void) window;
+  (void) self;
+  g_print ("pointer axis %d: %d\n", event->axis, event->value);
+}
+
 static gboolean
 _init (Example *self)
 {
-  if (!_init_glfw (self))
+  VkExtent2D extent = gulkan_renderer_get_extent (GULKAN_RENDERER (self));
+  self->window = gulkan_window_new (extent, "Gulkan Cube");
+  if (!self->window)
     {
-      g_printerr ("failed to initialize glfw\n");
+      g_printerr ("Could not initialize window.\n");
       return FALSE;
     }
 
-  GulkanClient *client = gulkan_client_new_glfw ();
-  if (!client)
+  GSList *instance_ext_list = gulkan_window_required_extensions (self->window);
+
+  const gchar *device_extensions[] = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+  };
+
+  GSList *device_ext_list = NULL;
+  for (uint64_t i = 0; i < G_N_ELEMENTS (device_extensions); i++)
     {
-      g_printerr ("Could not init gulkan.\n");
+      char *device_ext = g_strdup (device_extensions[i]);
+      device_ext_list = g_slist_append (device_ext_list, device_ext);
+    }
+
+  GulkanContext *context
+    = gulkan_context_new_from_extensions (instance_ext_list, device_ext_list,
+                                          VK_NULL_HANDLE);
+
+  if (!gulkan_window_has_support (self->window, context))
+    {
+      g_printerr ("Window surface extension support check failed.\n");
       return FALSE;
     }
 
-  gulkan_renderer_set_client (GULKAN_RENDERER (self), client);
+  g_slist_free (instance_ext_list);
+  g_slist_free (device_ext_list);
 
-  GulkanInstance *gulkan_instance = gulkan_client_get_instance (client);
-  GulkanDevice *gulkan_device = gulkan_client_get_device (client);
+  gulkan_renderer_set_context (GULKAN_RENDERER (self), context);
 
-  VkInstance instance = gulkan_instance_get_handle (gulkan_instance);
+  GulkanDevice *gulkan_device = gulkan_context_get_device (context);
 
-  VkSurfaceKHR surface;
-  if (glfwCreateWindowSurface (instance, self->window, NULL, &surface) !=
-      VK_SUCCESS)
-    {
-      g_printerr ("Unable to create surface.\n");
-      return FALSE;
-    }
+  self->vb = gulkan_vertex_buffer_new (gulkan_device,
+                                       VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
+  gulkan_vertex_buffer_add_attribute (self->vb, 3, sizeof (positions), 0,
+                                      (uint8_t *) positions);
+  gulkan_vertex_buffer_add_attribute (self->vb, 3, sizeof (colors), 0,
+                                      (uint8_t *) colors);
+  gulkan_vertex_buffer_add_attribute (self->vb, 3, sizeof (normals), 0,
+                                      (uint8_t *) normals);
 
-  self->vb = GULKAN_VERTEX_BUFFER_NEW_FROM_ATTRIBS (gulkan_device, positions,
-                                                    colors, normals);
+  if (!gulkan_vertex_buffer_upload (self->vb))
+    return FALSE;
 
   if (!self->vb)
     return FALSE;
 
-  ShaderResources resources = {
-    "/shaders/cube.vert.spv",
-    "/shaders/cube.frag.spv"
-  };
-
-  if (!model_renderer_initialize (MODEL_RENDERER (self),
-                                  surface,
-                                  background_color,
-                                 &resources))
+  self->transformation_ubo
+    = gulkan_uniform_buffer_new (gulkan_device, sizeof (Transformation));
+  if (!self->transformation_ubo)
     return FALSE;
 
-  glfwSetFramebufferSizeCallback(self->window, _framebuffer_size_cb);
+  VkDescriptorSetLayoutBinding bindings[] = {
+    {
+      .binding = 0,
+      .descriptorCount = 1,
+      .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+      .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+    },
+  };
+  self->descriptor_pool = GULKAN_DESCRIPTOR_POOL_NEW (context, bindings, 1);
+  self->descriptor_set
+    = gulkan_descriptor_pool_create_set (self->descriptor_pool);
 
+  gulkan_descriptor_set_update_buffer (self->descriptor_set, 0,
+                                       self->transformation_ubo);
+
+  g_signal_connect (self->window, "configure", (GCallback) _configure_cb, self);
+  g_signal_connect (self->window, "pointer-position",
+                    (GCallback) _pointer_position_cb, self);
+  g_signal_connect (self->window, "close", (GCallback) _close_cb, self);
+  g_signal_connect (self->window, "key", (GCallback) _key_cb, self);
+
+  g_signal_connect (self->window, "pointer-axis", (GCallback) _pointer_axis_cb,
+                    self);
   return TRUE;
 }
 
 static void
-_init_draw_cmd (ModelRenderer  *renderer,
-                VkCommandBuffer cmd_buffer)
+_init_draw_cmd (GulkanSwapchainRenderer *renderer, VkCommandBuffer cmd_buffer)
 {
   Example *self = GULKAN_EXAMPLE (renderer);
 
+  gulkan_pipeline_bind (self->pipeline, cmd_buffer);
+
+  VkPipelineLayout layout
+    = gulkan_descriptor_pool_get_pipeline_layout (self->descriptor_pool);
+
+  gulkan_descriptor_set_bind (self->descriptor_set, layout, cmd_buffer);
+
   gulkan_vertex_buffer_bind_with_offsets (self->vb, cmd_buffer);
-  vkCmdDraw (cmd_buffer, 4, 1, 0, 0);
-  vkCmdDraw (cmd_buffer, 4, 1, 4, 0);
-  vkCmdDraw (cmd_buffer, 4, 1, 8, 0);
-  vkCmdDraw (cmd_buffer, 4, 1, 12, 0);
-  vkCmdDraw (cmd_buffer, 4, 1, 16, 0);
-  vkCmdDraw (cmd_buffer, 4, 1, 20, 0);
+  // Draw faces seperately
+  uint32_t       offset = 0;
+  const uint32_t face_elements = 4;
+  for (uint32_t i = 0; i < 6; i++)
+    {
+      vkCmdDraw (cmd_buffer, face_elements, 1, offset, 0);
+      offset += face_elements;
+    }
+}
+
+static gboolean
+_init_pipeline (GulkanSwapchainRenderer *renderer, gconstpointer data)
+{
+  (void) data;
+  Example *self = GULKAN_EXAMPLE (renderer);
+
+  VkVertexInputBindingDescription *binding_desc
+    = gulkan_vertex_buffer_create_binding_desc (self->vb);
+  VkVertexInputAttributeDescription *attrib_desc
+    = gulkan_vertex_buffer_create_attrib_desc (self->vb);
+
+  GulkanPipelineConfig config = {
+    .sample_count = VK_SAMPLE_COUNT_1_BIT,
+    .vertex_shader_uri = vertex_shader_uri,
+    .fragment_shader_uri = fragment_shader_uri,
+    .topology = gulkan_vertex_buffer_get_topology (self->vb),
+    .attribs = attrib_desc,
+    .attrib_count = gulkan_vertex_buffer_get_attrib_count (self->vb),
+    .bindings = binding_desc,
+    .binding_count = gulkan_vertex_buffer_get_attrib_count (self->vb),
+    .blend_attachments = (VkPipelineColorBlendAttachmentState[]){
+      {
+        .colorWriteMask =
+          VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+          VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+        },
+      },
+    .rasterization_state = &(VkPipelineRasterizationStateCreateInfo){
+      .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+      .polygonMode = VK_POLYGON_MODE_FILL,
+      .cullMode = VK_CULL_MODE_BACK_BIT,
+      .frontFace = VK_FRONT_FACE_CLOCKWISE,
+      .lineWidth = 1.0f,
+    },
+    .dynamic_viewport = TRUE,
+  };
+
+  GulkanRenderPass *pass = gulkan_swapchain_renderer_get_render_pass (renderer);
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  self->pipeline = gulkan_pipeline_new (context, self->descriptor_pool, pass,
+                                        &config);
+
+  g_free (binding_desc);
+  g_free (attrib_desc);
+
+  return TRUE;
 }
 
 static void
@@ -368,8 +470,10 @@ gulkan_example_class_init (ExampleClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
   object_class->finalize = _finalize;
 
-  ModelRendererClass *parent_class = MODEL_RENDERER_CLASS (klass);
+  GulkanSwapchainRendererClass *parent_class
+    = GULKAN_SWAPCHAIN_RENDERER_CLASS (klass);
   parent_class->init_draw_cmd = _init_draw_cmd;
+  parent_class->init_pipeline = _init_pipeline;
 }
 
 int

@@ -25,7 +25,8 @@ THE SOFTWARE.
 Asset Licenses
 ================================================================================
 
-res/cat.jpg
+res/cat_srgb.jpg
+res/cat_linear.jpg
 
 Copyright 2015 LisOk1984
 SPDX-License-Identifier: CC-BY-SA-4.0

@@ -6,7 +6,7 @@
  */
 
 #include "gulkan-cmd-buffer-private.h"
-#include "gulkan-client.h"
+#include "gulkan-context.h"
 
 /**
  * _GulkanCmdBuffer:
@@ -20,8 +20,8 @@ struct _GulkanCmdBuffer
   GObject parent;
 
   VkCommandBuffer handle;
-  VkDevice device;
-  VkQueue queue;
+  VkDevice        device;
+  VkQueue         queue;
 
   VkCommandPool pool;
 };
@@ -37,7 +37,7 @@ gulkan_cmd_buffer_init (GulkanCmdBuffer *self)
 static GulkanCmdBuffer *
 _new (void)
 {
-  return (GulkanCmdBuffer*) g_object_new (GULKAN_TYPE_CMD_BUFFER, 0);
+  return (GulkanCmdBuffer *) g_object_new (GULKAN_TYPE_CMD_BUFFER, 0);
 }
 
 static void
@@ -55,15 +55,15 @@ gulkan_cmd_buffer_class_init (GulkanCmdBufferClass *klass)
   object_class->finalize = _finalize;
 }
 
-GulkanCmdBuffer *gulkan_cmd_buffer_new (GulkanDevice *device,
-                                        GulkanQueue  *queue) {
-  GulkanCmdBuffer *self = _new();
+GulkanCmdBuffer *
+gulkan_cmd_buffer_new (GulkanDevice *device, GulkanQueue *queue)
+{
+  GulkanCmdBuffer *self = _new ();
   self->pool = gulkan_queue_get_command_pool (queue);
   self->device = gulkan_device_get_handle (device);
   self->queue = gulkan_queue_get_handle (queue);
 
-  VkCommandBufferAllocateInfo command_buffer_info =
-  {
+  VkCommandBufferAllocateInfo command_buffer_info = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
     .commandBufferCount = 1,
     .commandPool = self->pool,
@@ -71,29 +71,49 @@ GulkanCmdBuffer *gulkan_cmd_buffer_new (GulkanDevice *device,
 
   VkResult res;
   res = vkAllocateCommandBuffers (self->device, &command_buffer_info,
-                                 &self->handle);
+                                  &self->handle);
   vk_check_error ("vkAllocateCommandBuffers", res, NULL);
 
   return self;
 }
 
 gboolean
-gulkan_cmd_buffer_begin (GulkanCmdBuffer *self)
+gulkan_cmd_buffer_end (GulkanCmdBuffer *self)
+{
+  VkResult res = vkEndCommandBuffer (self->handle);
+  vk_check_error ("vkEndCommandBuffer", res, FALSE);
+
+  return TRUE;
+}
+
+gboolean
+gulkan_cmd_buffer_begin (GulkanCmdBuffer *self, VkCommandBufferUsageFlags flags)
 {
   VkResult res;
 
-  VkCommandBufferBeginInfo command_buffer_begin_info =
-  {
+  VkCommandBufferBeginInfo command_buffer_begin_info = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+    .flags = flags,
   };
-  res = vkBeginCommandBuffer (self->handle,
-                             &command_buffer_begin_info);
+  res = vkBeginCommandBuffer (self->handle, &command_buffer_begin_info);
   vk_check_error ("vkBeginCommandBuffer", res, FALSE);
 
   return TRUE;
 }
 
+gboolean
+gulkan_cmd_buffer_begin_one_time (GulkanCmdBuffer *self)
+{
+  return gulkan_cmd_buffer_begin (self,
+                                  VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+}
+
+/**
+ * gulkan_cmd_buffer_get_handle:
+ * @self: a #GulkanCmdBuffer
+ *
+ * Returns: (transfer none): a #VkCommandBuffer
+ */
 VkCommandBuffer
 gulkan_cmd_buffer_get_handle (GulkanCmdBuffer *self)
 {

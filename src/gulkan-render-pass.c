@@ -53,36 +53,37 @@ _init (GulkanRenderPass     *self,
        VkSampleCountFlagBits samples,
        VkFormat              color_format,
        VkImageLayout         final_color_layout,
-       gboolean              use_depth)
+       gboolean              use_depth,
+       const void           *next)
 {
   self->use_depth = use_depth;
   self->device = g_object_ref (device);
 
   VkDevice vk_device = gulkan_device_get_handle (self->device);
 
-  VkAttachmentDescription *attachements = (VkAttachmentDescription[]) {
-      {
-        .format = color_format,
-        .samples = samples,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = final_color_layout,
-        .flags = 0
-      },
-      {
-        .format = VK_FORMAT_D32_SFLOAT,
-        .samples = samples,
-        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        .flags = 0
-      },
+  VkAttachmentDescription *attachements = (VkAttachmentDescription[]){
+    {
+      .format = color_format,
+      .samples = samples,
+      .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+      .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+      .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+      .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+      .finalLayout = final_color_layout,
+      .flags = 0,
+    },
+    {
+      .format = VK_FORMAT_D32_SFLOAT,
+      .samples = samples,
+      .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+      .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+      .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+      .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+      .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+      .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+      .flags = 0,
+    },
   };
 
   VkAttachmentReference depth_attachement = {
@@ -92,6 +93,7 @@ _init (GulkanRenderPass     *self,
 
   VkRenderPassCreateInfo renderpass_info = {
     .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+    .pNext = next,
     .flags = 0,
     .attachmentCount = self->use_depth ? 2 : 1,
     .pAttachments = attachements,
@@ -104,14 +106,14 @@ _init (GulkanRenderPass     *self,
         .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
       },
       .pDepthStencilAttachment = self->use_depth ? &depth_attachement : NULL,
-      .pResolveAttachments = NULL
+      .pResolveAttachments = NULL,
      },
     .dependencyCount = 0,
-    .pDependencies = NULL
+    .pDependencies = NULL,
   };
 
-  VkResult res = vkCreateRenderPass (vk_device, &renderpass_info,
-                                     NULL, &self->render_pass);
+  VkResult res = vkCreateRenderPass (vk_device, &renderpass_info, NULL,
+                                     &self->render_pass);
   vk_check_error ("vkCreateRenderPass", res, FALSE);
 
   return TRUE;
@@ -124,11 +126,51 @@ gulkan_render_pass_new (GulkanDevice         *device,
                         VkImageLayout         final_color_layout,
                         gboolean              use_depth)
 {
-  GulkanRenderPass *self =
-    (GulkanRenderPass*) g_object_new (GULKAN_TYPE_RENDER_PASS, 0);
+  GulkanRenderPass *self = (GulkanRenderPass *)
+    g_object_new (GULKAN_TYPE_RENDER_PASS, 0);
 
-  if (!_init (self, device, samples, color_format,
-              final_color_layout, use_depth))
+  if (!_init (self, device, samples, color_format, final_color_layout,
+              use_depth, NULL))
+    {
+      g_object_unref (self);
+      return NULL;
+    }
+
+  return self;
+}
+
+GulkanRenderPass *
+gulkan_render_pass_new_multiview (GulkanDevice         *device,
+                                  VkSampleCountFlagBits samples,
+                                  VkFormat              color_format,
+                                  VkImageLayout         final_color_layout,
+                                  gboolean              use_depth)
+{
+  GulkanRenderPass *self = (GulkanRenderPass *)
+    g_object_new (GULKAN_TYPE_RENDER_PASS, 0);
+
+  /*
+   * Bit mask that specifies which view rendering is broadcast to
+   * 0011 = Broadcast to first and second view (layer)
+   */
+  const uint32_t view_mask = 0b00000011;
+
+  /*
+   * Bit mask that specifies correlation between views
+   * An implementation may use this for optimizations (concurrent render)
+   */
+  const uint32_t correlation_mask = 0b00000011;
+
+  VkRenderPassMultiviewCreateInfo multiview_info = {
+    .sType = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO,
+    .subpassCount = 1,
+    .pViewMasks = &view_mask,
+    .correlationMaskCount = 1,
+    .pCorrelationMasks = &correlation_mask,
+  };
+
+  if (!_init (self, device, samples, color_format, final_color_layout,
+              use_depth, &multiview_info))
     {
       g_object_unref (self);
       return NULL;
@@ -158,21 +200,27 @@ gulkan_render_pass_begin (GulkanRenderPass  *self,
     .clearValueCount = self->use_depth ? 2 : 1,
     .pClearValues = (VkClearValue[]) {
       {
-        .color = clear_color
+        .color = clear_color,
       },
       {
         .depthStencil = {
           .depth = 1.0f,
-          .stencil = 0
-        }
+          .stencil = 0,
+        },
       },
-    }
+    },
   };
 
   vkCmdBeginRenderPass (cmd_buffer, &render_pass_info,
                         VK_SUBPASS_CONTENTS_INLINE);
 }
 
+/**
+ * gulkan_render_pass_get_handle:
+ * @self: a #GulkanRenderPass
+ *
+ * Returns: (transfer none): a #VkRenderPass
+ */
 VkRenderPass
 gulkan_render_pass_get_handle (GulkanRenderPass *self)
 {

@@ -2,6 +2,7 @@
  * gulkan
  * Copyright 2018 Collabora Ltd.
  * Author: Lubosz Sarnecki <lubosz.sarnecki@collabora.com>
+ * Author: Manas Chaudhary <manaschaudhary2000@gmail.com>
  * SPDX-License-Identifier: MIT
  */
 
@@ -13,9 +14,9 @@ struct _GulkanUniformBuffer
   GObject parent;
 
   GulkanBuffer *buffer;
-  VkDevice device;
-  VkDeviceSize size;
-  void *data;
+  VkDevice      device;
+  VkDeviceSize  size;
+  void         *data;
 };
 
 G_DEFINE_TYPE (GulkanUniformBuffer, gulkan_uniform_buffer, G_TYPE_OBJECT)
@@ -24,7 +25,8 @@ static void
 _finalize (GObject *gobject)
 {
   GulkanUniformBuffer *self = GULKAN_UNIFORM_BUFFER (gobject);
-  g_object_unref (self->buffer);
+  if (self->buffer)
+    g_object_unref (self->buffer);
 }
 
 static void
@@ -49,12 +51,10 @@ _allocate_and_map (GulkanUniformBuffer *self,
   self->device = gulkan_device_get_handle (device);
   self->size = size;
 
-  self->buffer = gulkan_buffer_new (device,
-                                    size,
+  self->buffer = gulkan_buffer_new (device, size,
                                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-                                    VK_MEMORY_PROPERTY_HOST_CACHED_BIT);
+                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
+                                      | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
   if (!self->buffer)
     {
@@ -69,11 +69,10 @@ _allocate_and_map (GulkanUniformBuffer *self,
 }
 
 GulkanUniformBuffer *
-gulkan_uniform_buffer_new (GulkanDevice *device,
-                           VkDeviceSize  size)
+gulkan_uniform_buffer_new (GulkanDevice *device, VkDeviceSize size)
 {
-  GulkanUniformBuffer* self =
-    (GulkanUniformBuffer*) g_object_new (GULKAN_TYPE_UNIFORM_BUFFER, 0);
+  GulkanUniformBuffer *self = (GulkanUniformBuffer *)
+    g_object_new (GULKAN_TYPE_UNIFORM_BUFFER, 0);
 
   if (!_allocate_and_map (self, device, size))
     {
@@ -85,14 +84,31 @@ gulkan_uniform_buffer_new (GulkanDevice *device,
 }
 
 void
-gulkan_uniform_buffer_update (GulkanUniformBuffer *self,
-                              gpointer            *s)
+gulkan_uniform_buffer_update (GulkanUniformBuffer *self, gpointer *s)
 {
   memcpy (self->data, s, self->size);
 }
 
+/**
+ * gulkan_uniform_buffer_get_handle:
+ * @self: a #GulkanUniformBuffer
+ *
+ * Returns: (transfer none): a #VkBuffer
+ */
 VkBuffer
 gulkan_uniform_buffer_get_handle (GulkanUniformBuffer *self)
 {
   return gulkan_buffer_get_handle (self->buffer);
+}
+
+VkDescriptorBufferInfo *
+gulkan_uniform_buffer_get_descriptor_info (GulkanUniformBuffer *self)
+{
+  VkDescriptorBufferInfo *info = g_malloc (sizeof (VkDescriptorBufferInfo));
+  *info = (VkDescriptorBufferInfo){
+    .buffer = gulkan_buffer_get_handle (self->buffer),
+    .offset = 0,
+    .range = VK_WHOLE_SIZE,
+  };
+  return info;
 }

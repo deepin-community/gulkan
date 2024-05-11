@@ -3,5 +3,7 @@
   <gresource prefix="/res">
     <file>cat_srgb.jpg</file>
     <file>cat_linear.jpg</file>
+    <file>wall_diffuse.png</file>
+    <file>wall_normal.png</file>
   </gresource>
 </gresources>

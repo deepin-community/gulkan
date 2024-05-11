@@ -6,9 +6,9 @@
  */
 
 #define _GNU_SOURCE
-#include <math.h>
-#include <cairo.h>
 #include "common/plane-example.h"
+#include <cairo.h>
+#include <math.h>
 
 struct _Example
 {
@@ -54,8 +54,8 @@ draw_gradient_circle (cairo_t *cr, double w, double h)
   double cx1 = center_x - r0;
   double cy1 = center_y - r0;
 
-  cairo_pattern_t *pat = cairo_pattern_create_radial (cx0, cy0, r0,
-                                                      cx1, cy1, r1);
+  cairo_pattern_t *pat = cairo_pattern_create_radial (cx0, cy0, r0, cx1, cy1,
+                                                      r1);
   cairo_pattern_add_color_stop_rgba (pat, 0, 1, 1, 1, 1);
   cairo_pattern_add_color_stop_rgba (pat, 1, 0, 0, 0, 1);
   cairo_set_source (cr, pat);
@@ -63,9 +63,8 @@ draw_gradient_circle (cairo_t *cr, double w, double h)
   cairo_fill (cr);
   cairo_pattern_destroy (pat);
 
-  cairo_select_font_face (cr, "Sans",
-      CAIRO_FONT_SLANT_NORMAL,
-      CAIRO_FONT_WEIGHT_NORMAL);
+  cairo_select_font_face (cr, "Sans", CAIRO_FONT_SLANT_NORMAL,
+                          CAIRO_FONT_WEIGHT_NORMAL);
 
   cairo_set_font_size (cr, 52.0);
 
@@ -97,14 +96,12 @@ draw_cairo (cairo_t *cr, double w, double h)
   draw_gradient_circle (cr, w, h);
 }
 
-static cairo_surface_t*
+static cairo_surface_t *
 create_cairo_surface (unsigned char *image, int w, int h)
 {
-  cairo_surface_t *surface =
-    cairo_image_surface_create_for_data (image,
-                                         CAIRO_FORMAT_ARGB32,
-                                         w, h,
-                                         w * 4);
+  cairo_surface_t *surface
+    = cairo_image_surface_create_for_data (image, CAIRO_FORMAT_ARGB32, w, h,
+                                           w * 4);
 
   cairo_t *cr = cairo_create (surface);
 
@@ -119,11 +116,8 @@ create_cairo_surface (unsigned char *image, int w, int h)
   return surface;
 }
 
-
-static GulkanTexture*
-_init_texture (PlaneExample *example,
-               GulkanClient *client,
-               GdkPixbuf    *pixbuf)
+static GulkanTexture *
+_init_texture (PlaneExample *example, GulkanContext *context, GdkPixbuf *pixbuf)
 {
   (void) pixbuf;
   (void) example;
@@ -131,19 +125,19 @@ _init_texture (PlaneExample *example,
   int w = gdk_pixbuf_get_width (pixbuf);
   int h = gdk_pixbuf_get_height (pixbuf);
 
-  unsigned char * image =
-    g_malloc (sizeof(unsigned char) * (unsigned long) (w * h) * 4);
-  cairo_surface_t* surface = create_cairo_surface (image, w, h);
+  unsigned char   *image = g_malloc (sizeof (unsigned char)
+                                     * (unsigned long) (w * h) * 4);
+  cairo_surface_t *surface = create_cairo_surface (image, w, h);
 
-  if (surface == NULL) {
-    fprintf (stderr, "Could not create cairo surface.\n");
-    return NULL;
-  }
+  if (surface == NULL)
+    {
+      fprintf (stderr, "Could not create cairo surface.\n");
+      return NULL;
+    }
 
-  GulkanTexture *texture =
-    gulkan_texture_new_from_cairo_surface (client, surface,
-                                           VK_FORMAT_R8G8B8A8_SRGB,
-                                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  GulkanTexture *texture = gulkan_texture_new_from_cairo_surface (
+    context, surface, VK_FORMAT_B8G8R8A8_SRGB,
+    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   g_free (image);
 
   return texture;
@@ -157,10 +151,10 @@ gulkan_example_class_init (ExampleClass *klass)
 }
 
 int
-main () {
+main ()
+{
   Example *self = (Example *) g_object_new (GULKAN_TYPE_EXAMPLE, 0);
-  if (!plane_example_initialize (PLANE_EXAMPLE (self),
-                                 "/res/cat_srgb.jpg",
+  if (!plane_example_initialize (PLANE_EXAMPLE (self), "/res/cat_srgb.jpg",
                                  NULL, NULL))
     return EXIT_FAILURE;
 

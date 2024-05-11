@@ -12,8 +12,8 @@
 typedef struct RenderBuffer
 {
   GulkanFrameBuffer *fb;
-  VkFence fence;
-  VkCommandBuffer cmd_buffer;
+  VkFence            fence;
+  VkCommandBuffer    cmd_buffer;
 } RenderBuffer;
 
 typedef struct _GulkanSwapchainRendererPrivate
@@ -23,48 +23,53 @@ typedef struct _GulkanSwapchainRendererPrivate
   RenderBuffer *buffers;
 
   GulkanRenderPass *pass;
-  GulkanSwapchain *swapchain;
+  GulkanSwapchain  *swapchain;
 
   VkClearColorValue clear_color;
 
   VkSemaphore acquire_to_submit_semaphore;
   VkSemaphore submit_to_present_semaphore;
 
+  gconstpointer pipeline_data;
+
   VkFormat format;
 
 } GulkanSwapchainRendererPrivate;
 
-G_DEFINE_TYPE_WITH_PRIVATE (GulkanSwapchainRenderer, gulkan_swapchain_renderer,
+G_DEFINE_TYPE_WITH_PRIVATE (GulkanSwapchainRenderer,
+                            gulkan_swapchain_renderer,
                             GULKAN_TYPE_RENDERER)
 
 static void
 gulkan_swapchain_renderer_init (GulkanSwapchainRenderer *self)
 {
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
   priv->format = VK_FORMAT_B8G8R8A8_SRGB;
+  priv->swapchain = NULL;
+  priv->pass = NULL;
 }
 
 static void
 _finalize (GObject *gobject)
 {
-  GulkanSwapchainRenderer *self = GULKAN_SWAPCHAIN_RENDERER (gobject);
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRenderer        *self = GULKAN_SWAPCHAIN_RENDERER (gobject);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
 
-  GulkanClient *client = gulkan_renderer_get_client (GULKAN_RENDERER (self));
-  if (client)
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  if (context)
     {
-      VkDevice device = gulkan_client_get_device_handle (client);
+      VkDevice device = gulkan_context_get_device_handle (context);
 
       if (priv->swapchain)
         {
-          for (uint32_t i = 0;
-               i < gulkan_swapchain_get_size (priv->swapchain); i++)
-          {
-            g_object_unref (priv->buffers[i].fb);
-            vkDestroyFence (device, priv->buffers[i].fence, NULL);
-          }
+          for (uint32_t i = 0; i < gulkan_swapchain_get_size (priv->swapchain);
+               i++)
+            {
+              g_object_unref (priv->buffers[i].fb);
+              vkDestroyFence (device, priv->buffers[i].fence, NULL);
+            }
           g_object_unref (priv->swapchain);
         }
 
@@ -81,53 +86,56 @@ _finalize (GObject *gobject)
 static gboolean
 _init_sync (GulkanSwapchainRenderer *self)
 {
-  GulkanClient *client = gulkan_renderer_get_client (GULKAN_RENDERER (self));
-  VkDevice device = gulkan_client_get_device_handle (client);
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  VkDevice       device = gulkan_context_get_device_handle (context);
 
   VkSemaphoreCreateInfo info = {
     .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
   };
 
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
 
   VkResult res;
   res = vkCreateSemaphore (device, &info, NULL,
-                          &priv->acquire_to_submit_semaphore);
+                           &priv->acquire_to_submit_semaphore);
   vk_check_error ("vkCreateSemaphore", res, TRUE);
   res = vkCreateSemaphore (device, &info, NULL,
-                          &priv->submit_to_present_semaphore);
+                           &priv->submit_to_present_semaphore);
   vk_check_error ("vkCreateSemaphore", res, TRUE);
 
   return TRUE;
 }
 
 static gboolean
-_init_render_buffer (GulkanSwapchainRenderer *self, RenderBuffer *b, VkImage image)
+_init_render_buffer (GulkanSwapchainRenderer *self,
+                     RenderBuffer            *b,
+                     VkImage                  image)
 {
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
 
-  GulkanClient *client = gulkan_renderer_get_client (GULKAN_RENDERER (self));
-  GulkanDevice *gulkan_device = gulkan_client_get_device (client);
-  VkDevice device = gulkan_device_get_handle (gulkan_device);
-  VkExtent2D extent = gulkan_renderer_get_extent (GULKAN_RENDERER (self));
-  VkFormat format = gulkan_swapchain_get_format (priv->swapchain);
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  GulkanDevice  *gulkan_device = gulkan_context_get_device (context);
+  VkDevice       device = gulkan_device_get_handle (gulkan_device);
+  VkExtent2D     extent = gulkan_renderer_get_extent (GULKAN_RENDERER (self));
+  VkFormat       format = gulkan_swapchain_get_format (priv->swapchain);
 
   b->fb = gulkan_frame_buffer_new_from_image (gulkan_device, priv->pass, image,
-                                              extent, format);
+                                              extent, format, 1);
 
   if (!b->fb)
     return FALSE;
 
-  VkResult res = vkCreateFence (
-    device,
-    &(VkFenceCreateInfo){ .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                          .flags = VK_FENCE_CREATE_SIGNALED_BIT },
-    NULL, &b->fence);
+  VkFenceCreateInfo fence_info = {
+    .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+    .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+  };
+
+  VkResult res = vkCreateFence (device, &fence_info, NULL, &b->fence);
   vk_check_error ("vkCreateFence", res, FALSE);
 
-  GulkanQueue *gulkan_queue = gulkan_device_get_graphics_queue (gulkan_device);
+  GulkanQueue  *gulkan_queue = gulkan_device_get_graphics_queue (gulkan_device);
   VkCommandPool pool = gulkan_queue_get_command_pool (gulkan_queue);
   VkCommandBufferAllocateInfo alloc_info = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -145,8 +153,8 @@ _init_render_buffer (GulkanSwapchainRenderer *self, RenderBuffer *b, VkImage ima
 static gboolean
 _init_render_buffers (GulkanSwapchainRenderer *self)
 {
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
 
   uint32_t size = gulkan_swapchain_get_size (priv->swapchain);
   VkImage *images = g_malloc (sizeof (VkImage) * size);
@@ -163,59 +171,33 @@ _init_render_buffers (GulkanSwapchainRenderer *self)
   return TRUE;
 }
 
-VkRenderPass
-gulkan_swapchain_renderer_get_render_pass_handle (GulkanSwapchainRenderer *self)
-{
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
-
-  return gulkan_render_pass_get_handle (priv->pass);
-}
-
+/**
+ * gulkan_swapchain_renderer_get_render_pass:
+ * @self: a #GulkanSwapchainRenderer
+ *
+ * Returns: (transfer none): the #GulkanRenderPass
+ */
 GulkanRenderPass *
 gulkan_swapchain_renderer_get_render_pass (GulkanSwapchainRenderer *self)
 {
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
 
   return priv->pass;
-}
-
-uint32_t
-gulkan_swapchain_renderer_get_swapchain_size (GulkanSwapchainRenderer *self)
-{
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
-
-  return gulkan_swapchain_get_size (priv->swapchain);
-}
-
-VkCommandBuffer
-gulkan_swapchain_renderer_get_cmd_buffer (GulkanSwapchainRenderer *self,
-                                          uint32_t index)
-{
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
-
-  return priv->buffers[index].cmd_buffer;
-}
-
-GulkanFrameBuffer *
-gulkan_swapchain_renderer_get_frame_buffer (GulkanSwapchainRenderer *self,
-                                            uint32_t index)
-{
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
-
-  return priv->buffers[index].fb;
 }
 
 static gboolean
 _draw (GulkanRenderer *renderer)
 {
-  GulkanSwapchainRenderer *self = GULKAN_SWAPCHAIN_RENDERER (renderer);
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRenderer        *self = GULKAN_SWAPCHAIN_RENDERER (renderer);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
+
+  // Wait for swapchain to init. XCB backend needs this.
+  if (!priv->swapchain)
+    {
+      return TRUE;
+    }
 
   uint32_t index;
   if (!gulkan_swapchain_acquire (priv->swapchain,
@@ -226,9 +208,9 @@ _draw (GulkanRenderer *renderer)
 
   RenderBuffer *b = &priv->buffers[index];
 
-  GulkanClient *client = gulkan_renderer_get_client (GULKAN_RENDERER (self));
-  GulkanDevice *gulkan_device = gulkan_client_get_device (client);
-  VkDevice device = gulkan_device_get_handle (gulkan_device);
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  GulkanDevice  *gulkan_device = gulkan_context_get_device (context);
+  VkDevice       device = gulkan_device_get_handle (gulkan_device);
 
   VkResult res;
   res = vkWaitForFences (device, 1, &b->fence, VK_TRUE, UINT64_MAX);
@@ -238,7 +220,7 @@ _draw (GulkanRenderer *renderer)
   vk_check_error ("vkResetFences", res, FALSE);
 
   GulkanQueue *gulkan_queue = gulkan_device_get_graphics_queue (gulkan_device);
-  VkQueue queue = gulkan_queue_get_handle (gulkan_queue);
+  VkQueue      queue = gulkan_queue_get_handle (gulkan_queue);
 
   VkSubmitInfo submit_info = {
     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -257,8 +239,8 @@ _draw (GulkanRenderer *renderer)
   res = vkQueueSubmit (queue, 1, &submit_info, b->fence);
   vk_check_error ("vkQueueSubmit", res, FALSE);
 
-  gulkan_swapchain_present (priv->swapchain,
-                           &priv->submit_to_present_semaphore, index);
+  gulkan_swapchain_present (priv->swapchain, &priv->submit_to_present_semaphore,
+                            index);
 
   return TRUE;
 }
@@ -266,43 +248,45 @@ _draw (GulkanRenderer *renderer)
 gboolean
 gulkan_swapchain_renderer_init_draw_cmd_buffers (GulkanSwapchainRenderer *self)
 {
-  GulkanSwapchainRendererClass *klass =
-    GULKAN_SWAPCHAIN_RENDERER_GET_CLASS (self);
+  GulkanSwapchainRendererClass *klass
+    = GULKAN_SWAPCHAIN_RENDERER_GET_CLASS (self);
   if (klass->init_draw_cmd == NULL)
     return FALSE;
 
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
 
   VkResult res;
 
   VkCommandBufferBeginInfo info = {
-    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, .flags = 0
+    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    .flags = 0,
   };
 
-  GulkanSwapchainRenderer *scr = GULKAN_SWAPCHAIN_RENDERER (self);
-  uint32_t size = gulkan_swapchain_renderer_get_swapchain_size (scr);
+  uint32_t size = gulkan_swapchain_get_size (priv->swapchain);
 
   VkExtent2D extent = gulkan_renderer_get_extent (GULKAN_RENDERER (self));
 
   const VkViewport viewport = {
     .x = 0,
     .y = 0,
-    .width = extent.width,
-    .height = extent.height,
+    .width = (float) extent.width,
+    .height = (float) extent.height,
     .minDepth = 0,
     .maxDepth = 1,
   };
-  VkRect2D render_area = { { 0, 0 }, extent };
+  VkRect2D render_area = {{0, 0}, extent};
 
   for (uint32_t i = 0; i < size; i++)
     {
-      VkCommandBuffer cmd_buffer =
-        gulkan_swapchain_renderer_get_cmd_buffer (scr, i);
+      VkCommandBuffer cmd_buffer = priv->buffers[i].cmd_buffer;
       res = vkBeginCommandBuffer (cmd_buffer, &info);
       vk_check_error ("vkBeginCommandBuffer", res, FALSE);
 
-      gulkan_swapchain_renderer_begin_render_pass (scr, priv->clear_color, i);
+      RenderBuffer *b = &priv->buffers[i];
+
+      gulkan_render_pass_begin (priv->pass, extent, priv->clear_color, b->fb,
+                                b->cmd_buffer);
 
       vkCmdSetViewport (cmd_buffer, 0, 1, &viewport);
       vkCmdSetScissor (cmd_buffer, 0, 1, &render_area);
@@ -318,36 +302,36 @@ gulkan_swapchain_renderer_init_draw_cmd_buffers (GulkanSwapchainRenderer *self)
   return TRUE;
 }
 
-gboolean
+static gboolean
+_is_extent_valid (VkExtent2D *extent)
+{
+  return extent->width < UINT32_MAX && extent->height < UINT32_MAX
+         && extent->width > 0 && extent->height > 0;
+}
+
+void
 gulkan_swapchain_renderer_initialize (GulkanSwapchainRenderer *self,
-                                      VkSurfaceKHR             surface,
                                       VkClearColorValue        clear_color,
                                       gconstpointer            pipeline_data)
 {
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
-
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
   priv->clear_color = clear_color;
+  priv->pipeline_data = pipeline_data;
+}
 
-  GulkanClient *client = gulkan_renderer_get_client (GULKAN_RENDERER (self));
-  GulkanDevice *gulkan_device = gulkan_client_get_device (client);
+static gboolean
+_do_init (GulkanSwapchainRenderer *self)
+{
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  GulkanDevice  *gulkan_device = gulkan_context_get_device (context);
 
-  priv->swapchain = gulkan_swapchain_new (
-    client, surface, VK_PRESENT_MODE_FIFO_KHR, priv->format,
-    VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
-  if (!priv->swapchain)
-    {
-      g_printerr ("Could not init swapchain.\n");
-      return FALSE;
-    }
-
-  gulkan_renderer_set_extent (GULKAN_RENDERER (self),
-                              gulkan_swapchain_get_extent (priv->swapchain));
-
-  priv->pass =
-    gulkan_render_pass_new (gulkan_device, VK_SAMPLE_COUNT_1_BIT,
-                            gulkan_swapchain_get_format (priv->swapchain),
-                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, FALSE);
+  priv->pass
+    = gulkan_render_pass_new (gulkan_device, VK_SAMPLE_COUNT_1_BIT,
+                              gulkan_swapchain_get_format (priv->swapchain),
+                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, FALSE);
   if (!priv->pass)
     {
       g_printerr ("Could not init render pass.\n");
@@ -360,34 +344,15 @@ gulkan_swapchain_renderer_initialize (GulkanSwapchainRenderer *self,
   if (!_init_sync (self))
     return FALSE;
 
-  GulkanSwapchainRendererClass *klass =
-    GULKAN_SWAPCHAIN_RENDERER_GET_CLASS (self);
+  GulkanSwapchainRendererClass *klass
+    = GULKAN_SWAPCHAIN_RENDERER_GET_CLASS (self);
   if (klass->init_pipeline == NULL)
     return FALSE;
 
-  if (!klass->init_pipeline (self, pipeline_data))
-    return FALSE;
-
-  if (!gulkan_swapchain_renderer_init_draw_cmd_buffers (self))
+  if (!klass->init_pipeline (self, priv->pipeline_data))
     return FALSE;
 
   return TRUE;
-}
-
-void
-gulkan_swapchain_renderer_begin_render_pass (GulkanSwapchainRenderer *self,
-                                             VkClearColorValue        clear_color,
-                                             uint32_t                 index)
-{
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
-
-  VkExtent2D extent = gulkan_renderer_get_extent (GULKAN_RENDERER (self));
-
-  RenderBuffer *b = &priv->buffers[index];
-
-  gulkan_render_pass_begin (priv->pass, extent, clear_color,
-                            b->fb, b->cmd_buffer);
 }
 
 static void
@@ -402,37 +367,70 @@ gulkan_swapchain_renderer_class_init (GulkanSwapchainRendererClass *klass)
 
 gboolean
 gulkan_swapchain_renderer_resize (GulkanSwapchainRenderer *self,
-                                  VkSurfaceKHR             surface)
+                                  VkSurfaceKHR             surface,
+                                  VkExtent2D               expose_extent)
 {
-  GulkanSwapchainRendererPrivate *priv =
-    gulkan_swapchain_renderer_get_instance_private (self);
+  GulkanSwapchainRendererPrivate *priv
+    = gulkan_swapchain_renderer_get_instance_private (self);
 
-  GulkanClient *client = gulkan_renderer_get_client (GULKAN_RENDERER (self));
-  GulkanDevice *gulkan_device = gulkan_client_get_device (client);
+  GulkanContext *context = gulkan_renderer_get_context (GULKAN_RENDERER (self));
+  GulkanDevice  *gulkan_device = gulkan_context_get_device (context);
 
+  g_debug ("gulkan_swapchain_renderer_resize: Got expose extent %dx%d\n",
+           expose_extent.width, expose_extent.height);
 
-  for (uint32_t i = 0; i < gulkan_swapchain_get_size (priv->swapchain); i++)
-    g_object_unref (priv->buffers[i].fb);
-  g_object_unref (priv->swapchain);
+  VkExtent2D extent;
+  if (_is_extent_valid (&expose_extent))
+    {
+      extent = expose_extent;
+    }
+  else
+    {
+      extent = gulkan_renderer_get_extent (GULKAN_RENDERER (self));
+    }
 
-  priv->swapchain = gulkan_swapchain_new (
-    client, surface, VK_PRESENT_MODE_FIFO_KHR, priv->format,
-    VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
+  if (!_is_extent_valid (&extent))
+    {
+      g_printerr ("Could not get any extent. None is set on the renderer.\n");
+      return FALSE;
+    }
+
+  if (priv->swapchain)
+    {
+      for (uint32_t i = 0; i < gulkan_swapchain_get_size (priv->swapchain); i++)
+        g_object_unref (priv->buffers[i].fb);
+      g_object_unref (priv->swapchain);
+    }
+
+  priv->swapchain = gulkan_swapchain_new (context, surface, extent,
+                                          VK_PRESENT_MODE_FIFO_KHR,
+                                          priv->format,
+                                          VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
 
   if (!priv->swapchain)
-    return FALSE;
-
-  VkExtent2D extent = gulkan_swapchain_get_extent (priv->swapchain);
+    {
+      g_printerr ("Could not init swapchain.\n");
+      return FALSE;
+    }
 
   gulkan_renderer_set_extent (GULKAN_RENDERER (self), extent);
 
-  size_t size = gulkan_swapchain_get_size (priv->swapchain);
-  VkImage *images = g_malloc (sizeof(VkImage) * size);
+  // Init render pass and pipeline on first resize
+  if (!priv->pass)
+    {
+      if (!_do_init (self))
+        {
+          return FALSE;
+        }
+    }
+
+  size_t   size = gulkan_swapchain_get_size (priv->swapchain);
+  VkImage *images = g_malloc (sizeof (VkImage) * size);
   gulkan_swapchain_get_images (priv->swapchain, images);
 
   VkFormat format = gulkan_swapchain_get_format (priv->swapchain);
 
-  GulkanQueue *gulkan_queue = gulkan_device_get_graphics_queue (gulkan_device);
+  GulkanQueue  *gulkan_queue = gulkan_device_get_graphics_queue (gulkan_device);
   VkCommandPool pool = gulkan_queue_get_command_pool (gulkan_queue);
 
   VkCommandBufferAllocateInfo alloc_info = {
@@ -447,7 +445,7 @@ gulkan_swapchain_renderer_resize (GulkanSwapchainRenderer *self,
     {
       RenderBuffer *b = &priv->buffers[i];
       b->fb = gulkan_frame_buffer_new_from_image (gulkan_device, priv->pass,
-                                                  images[i], extent, format);
+                                                  images[i], extent, format, 1);
       if (!b->fb)
         {
           g_printerr ("Error: Creating framebuffer failed.\n");

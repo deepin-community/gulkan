@@ -16,21 +16,23 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#define ENUM_TO_STR(r) case r: return #r
+#define ENUM_TO_STR(r)                                                         \
+  case r:                                                                      \
+    return #r
 
-static const gchar*
+static const gchar *
 gl_error_string (GLenum code)
 {
   switch (code)
     {
-      ENUM_TO_STR(GL_NO_ERROR);
-      ENUM_TO_STR(GL_INVALID_ENUM);
-      ENUM_TO_STR(GL_INVALID_VALUE);
-      ENUM_TO_STR(GL_INVALID_OPERATION);
-      ENUM_TO_STR(GL_INVALID_FRAMEBUFFER_OPERATION);
-      ENUM_TO_STR(GL_OUT_OF_MEMORY);
-      ENUM_TO_STR(GL_STACK_UNDERFLOW);
-      ENUM_TO_STR(GL_STACK_OVERFLOW);
+      ENUM_TO_STR (GL_NO_ERROR);
+      ENUM_TO_STR (GL_INVALID_ENUM);
+      ENUM_TO_STR (GL_INVALID_VALUE);
+      ENUM_TO_STR (GL_INVALID_OPERATION);
+      ENUM_TO_STR (GL_INVALID_FRAMEBUFFER_OPERATION);
+      ENUM_TO_STR (GL_OUT_OF_MEMORY);
+      ENUM_TO_STR (GL_STACK_UNDERFLOW);
+      ENUM_TO_STR (GL_STACK_OVERFLOW);
       default:
         return "UNKNOWN GL Error";
     }
@@ -56,6 +58,9 @@ _finalize (GObject *gobject)
   if (self->gl_mem_object != 0)
     glDeleteMemoryObjectsEXT (1, &self->gl_mem_object);
   G_OBJECT_CLASS (gulkan_example_parent_class)->finalize (gobject);
+
+  glfwDestroyWindow (self->opengl_window);
+  glfwTerminate ();
 }
 
 static void
@@ -80,34 +85,39 @@ gulkan_example_init (Example *self)
 }
 
 static void
-gl_check_error (char* prefix)
+gl_check_error (char *prefix)
 {
-  GLenum err = 0 ;
-  while((err = glGetError ()) != GL_NO_ERROR)
+  GLenum err = 0;
+  while ((err = glGetError ()) != GL_NO_ERROR)
     g_printerr ("GL ERROR: %s - %s\n", prefix, gl_error_string (err));
 }
 
-static GulkanTexture*
-_init_texture (PlaneExample *example,
-               GulkanClient *client,
-               GdkPixbuf    *pixbuf)
+static GulkanTexture *
+_init_texture (PlaneExample *example, GulkanContext *context, GdkPixbuf *pixbuf)
 {
   Example *self = GULKAN_EXAMPLE (example);
 
   VkExtent2D extent = {
     .width = (uint32_t) gdk_pixbuf_get_width (pixbuf),
-    .height = (uint32_t) gdk_pixbuf_get_height (pixbuf)
+    .height = (uint32_t) gdk_pixbuf_get_height (pixbuf),
   };
 
-  VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-  int fd;
-  gsize size;
-  GulkanTexture *texture = gulkan_texture_new_export_fd (
-    client, extent, VK_FORMAT_R8G8B8A8_SRGB, layout, &size, &fd);
+  VkImageLayout  layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+  int            fd;
+  gsize          size;
+  GulkanTexture *texture
+    = gulkan_texture_new_export_fd (context, extent, VK_FORMAT_R8G8B8A8_SRGB,
+                                    layout, &size, &fd);
 
   if (!texture)
     {
       g_printerr ("Could not initialize texture.\n");
+      return NULL;
+    }
+
+  if (!glfwInit ())
+    {
+      g_printerr ("Unable to initialize GLFW.\n");
       return NULL;
     }
 
@@ -121,10 +131,10 @@ _init_texture (PlaneExample *example,
     }
 
   if (!glewIsSupported ("GL_EXT_memory_object"))
-  {
-    g_printerr ("GL_EXT_memory_object is not supported.\n");
-    return NULL;
-  }
+    {
+      g_printerr ("GL_EXT_memory_object is not supported.\n");
+      return NULL;
+    }
 
   GLint gl_dedicated_mem = GL_TRUE;
 
@@ -140,18 +150,17 @@ _init_texture (PlaneExample *example,
 
   /* Note: ImportMemoryFd takes ownership of the fd from the Vulkan driver.
    * The Vulkan driver is now free to reuse the fd number */
-  glImportMemoryFdEXT (self->gl_mem_object, size,
-                       GL_HANDLE_TYPE_OPAQUE_FD_EXT, fd);
+  glImportMemoryFdEXT (self->gl_mem_object, size, GL_HANDLE_TYPE_OPAQUE_FD_EXT,
+                       fd);
   gl_check_error ("glImportMemoryFdEXT");
 
   g_print ("Imported texture from fd %d\n", fd);
-
 
   glGenTextures (1, &self->gl_texture);
   glBindTexture (GL_TEXTURE_2D, self->gl_texture);
   gl_check_error ("glBindTexture");
 
-  glTexParameteri (GL_TEXTURE_2D,GL_TEXTURE_TILING_EXT, GL_OPTIMAL_TILING_EXT);
+  glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_OPTIMAL_TILING_EXT);
   gl_check_error ("glTexParameteri GL_OPTIMAL_TILING_EXT");
   glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   gl_check_error ("glTexParameteri GL_TEXTURE_MIN_FILTER");
@@ -166,14 +175,13 @@ _init_texture (PlaneExample *example,
 
   /* we can NOT use glTexImage2D() because the memory is already allocated */
   glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, (GLint) extent.width,
-                   (GLint) extent.height, GL_RGBA,
-                   GL_UNSIGNED_BYTE, (GLvoid*)rgb);
+                   (GLint) extent.height, GL_RGBA, GL_UNSIGNED_BYTE,
+                   (GLvoid *) rgb);
   gl_check_error ("glTexSubImage2D");
 
-  glFinish();
+  glFinish ();
 
-  if (!gulkan_texture_transfer_layout (texture,
-                                       VK_IMAGE_LAYOUT_UNDEFINED,
+  if (!gulkan_texture_transfer_layout (texture, VK_IMAGE_LAYOUT_UNDEFINED,
                                        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL))
     {
       g_printerr ("Could not transfer image layout!");
@@ -185,16 +193,14 @@ _init_texture (PlaneExample *example,
 static gboolean
 _init (Example *self)
 {
-  GSList *instance_ext_list =
-    gulkan_client_get_external_memory_instance_extensions ();
+  GSList *instance_ext_list
+    = gulkan_context_get_external_memory_instance_extensions ();
 
-  GSList *device_ext_list =
-    gulkan_client_get_external_memory_device_extensions ();
+  GSList *device_ext_list
+    = gulkan_context_get_external_memory_device_extensions ();
 
-  if (!plane_example_initialize (PLANE_EXAMPLE (self),
-                                 "/res/cat_srgb.jpg",
-                                 instance_ext_list,
-                                 device_ext_list))
+  if (!plane_example_initialize (PLANE_EXAMPLE (self), "/res/cat_srgb.jpg",
+                                 instance_ext_list, device_ext_list))
     return FALSE;
 
   return TRUE;
@@ -211,7 +217,8 @@ gulkan_example_class_init (ExampleClass *klass)
 }
 
 int
-main () {
+main ()
+{
   Example *self = (Example *) g_object_new (GULKAN_TYPE_EXAMPLE, 0);
   if (!_init (self))
     {

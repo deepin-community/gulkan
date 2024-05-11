@@ -8,7 +8,7 @@
 #ifndef GULKAN_DEVICE_H_
 #define GULKAN_DEVICE_H_
 
-#if !defined (GULKAN_INSIDE) && !defined (GULKAN_COMPILATION)
+#if !defined(GULKAN_INSIDE) && !defined(GULKAN_COMPILATION)
 #error "Only <gulkan.h> can be included directly."
 #endif
 
@@ -21,11 +21,11 @@
 
 G_BEGIN_DECLS
 
-#define GULKAN_TYPE_DEVICE gulkan_device_get_type()
-G_DECLARE_FINAL_TYPE (GulkanDevice, gulkan_device,
-                      GULKAN, DEVICE, GObject)
+#define GULKAN_TYPE_DEVICE gulkan_device_get_type ()
+G_DECLARE_FINAL_TYPE (GulkanDevice, gulkan_device, GULKAN, DEVICE, GObject)
 
-GulkanDevice *gulkan_device_new (void);
+GulkanDevice *
+gulkan_device_new (void);
 
 gboolean
 gulkan_device_create (GulkanDevice    *self,
@@ -34,13 +34,18 @@ gulkan_device_create (GulkanDevice    *self,
                       GSList          *extensions);
 
 gboolean
-gulkan_device_memory_type_from_properties (
-  GulkanDevice         *self,
-  uint32_t              memory_type_bits,
-  VkMemoryPropertyFlags memory_property_flags,
-  uint32_t             *type_index_out);
+gulkan_device_create_from_vk (GulkanDevice    *self,
+                              VkPhysicalDevice vk_physical_device,
+                              VkDevice         vk_device,
+                              uint32_t         graphics_queue_index,
+                              uint32_t         transfer_queue_index);
 
-
+gboolean
+gulkan_device_memory_type_from_properties (GulkanDevice *self,
+                                           uint32_t      memory_type_bits,
+                                           VkMemoryPropertyFlags
+                                                     memory_property_flags,
+                                           uint32_t *type_index_out);
 
 VkDevice
 gulkan_device_get_handle (GulkanDevice *self);
@@ -65,11 +70,19 @@ gulkan_device_print_memory_budget (GulkanDevice *self);
 VkDeviceSize
 gulkan_device_get_heap_budget (GulkanDevice *self, uint32_t i);
 
-GulkanQueue*
+GulkanQueue *
 gulkan_device_get_graphics_queue (GulkanDevice *self);
 
-GulkanQueue*
+GulkanQueue *
 gulkan_device_get_transfer_queue (GulkanDevice *self);
+
+VkPhysicalDeviceProperties *
+gulkan_device_get_physical_device_properties (GulkanDevice *self);
+
+gboolean
+gulkan_device_create_shader_module (GulkanDevice   *self,
+                                    const gchar    *resource_name,
+                                    VkShaderModule *module);
 
 G_END_DECLS
 

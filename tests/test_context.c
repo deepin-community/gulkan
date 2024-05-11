@@ -10,9 +10,9 @@
 static void
 _test_minimal ()
 {
-  GulkanClient *client = gulkan_client_new ();
-  g_assert_nonnull (client);
-  g_object_unref (client);
+  GulkanContext *context = gulkan_context_new ();
+  g_assert_nonnull (context);
+  g_object_unref (context);
 }
 
 int
@@ -22,5 +22,3 @@ main ()
 
   return 0;
 }
-
-

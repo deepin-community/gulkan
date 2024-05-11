@@ -6,8 +6,8 @@
  */
 
 #include "gulkan-queue.h"
-#include "gulkan-device.h"
 #include "gulkan-cmd-buffer-private.h"
+#include "gulkan-device.h"
 
 struct _GulkanQueue
 {
@@ -37,8 +37,15 @@ gulkan_queue_init (GulkanQueue *self)
   g_mutex_init (&self->queue_mutex);
 }
 
+/**
+ * gulkan_queue_get_pool_mutex:
+ * @self: a #GulkanQueue
+ *
+ * Returns: (transfer none): the pool #GMutex
+ */
 GMutex *
-gulkan_queue_get_pool_mutex (GulkanQueue *self) {
+gulkan_queue_get_pool_mutex (GulkanQueue *self)
+{
   return &self->pool_mutex;
 }
 
@@ -47,12 +54,11 @@ _init_pool (GulkanQueue *self)
 {
   VkDevice vk_device = gulkan_device_get_handle (self->device);
 
-  VkCommandPoolCreateInfo command_pool_info =
-    {
-      .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-      .queueFamilyIndex = self->family_index,
-      .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
-    };
+  VkCommandPoolCreateInfo command_pool_info = {
+    .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+    .queueFamilyIndex = self->family_index,
+    .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+  };
 
   VkResult res = vkCreateCommandPool (vk_device, &command_pool_info, NULL,
                                       &self->pool);
@@ -95,6 +101,12 @@ gulkan_queue_class_init (GulkanQueueClass *klass)
   object_class->finalize = _finalize;
 }
 
+/**
+ * gulkan_queue_get_command_pool:
+ * @self: a #GulkanQueue
+ *
+ * Returns: (transfer none): the #VkCommandPool
+ */
 VkCommandPool
 gulkan_queue_get_command_pool (GulkanQueue *self)
 {
@@ -102,15 +114,13 @@ gulkan_queue_get_command_pool (GulkanQueue *self)
 }
 
 gboolean
-gulkan_queue_supports_surface (GulkanQueue *self,
-                               VkSurfaceKHR surface)
+gulkan_queue_supports_surface (GulkanQueue *self, VkSurfaceKHR surface)
 {
   VkBool32 surface_support = FALSE;
 
   VkPhysicalDevice device = gulkan_device_get_physical_handle (self->device);
-  vkGetPhysicalDeviceSurfaceSupportKHR (device,
-                                        self->family_index,
-                                        surface, &surface_support);
+  vkGetPhysicalDeviceSurfaceSupportKHR (device, self->family_index, surface,
+                                        &surface_support);
   return (gboolean) surface_support;
 }
 
@@ -120,6 +130,12 @@ gulkan_queue_get_family_index (GulkanQueue *self)
   return self->family_index;
 }
 
+/**
+ * gulkan_queue_get_handle:
+ * @self: a #GulkanQueue
+ *
+ * Returns: (transfer none): the #VkQueue
+ */
 VkQueue
 gulkan_queue_get_handle (GulkanQueue *self)
 {
@@ -132,7 +148,7 @@ gulkan_queue_initialize (GulkanQueue *self)
   VkDevice device = gulkan_device_get_handle (self->device);
   vkGetDeviceQueue (device, self->family_index, 0, &self->handle);
 
-  if (!_init_pool(self))
+  if (!_init_pool (self))
     {
       g_printerr ("Failed to create command pool.\n");
       g_object_unref (self);
@@ -150,6 +166,12 @@ gulkan_queue_initialize (GulkanQueue *self)
   return TRUE;
 }
 
+/**
+ * gulkan_queue_request_cmd_buffer:
+ * @self: a #GulkanQueue
+ *
+ * Returns: (transfer full): a new #GulkanCmdBuffer
+ */
 GulkanCmdBuffer *
 gulkan_queue_request_cmd_buffer (GulkanQueue *self)
 {
@@ -159,9 +181,15 @@ gulkan_queue_request_cmd_buffer (GulkanQueue *self)
   return cmd_buffer;
 }
 
+/**
+ * gulkan_queue_free_cmd_buffer:
+ * @self: a #GulkanQueue
+ * @cmd_buffer: (transfer full): a #GulkanCmdBuffer
+ *
+ * Frees the #GulkanCmdBuffer returned by gulkan_queue_request_cmd_buffer()
+ */
 void
-gulkan_queue_free_cmd_buffer (GulkanQueue *self,
-                              GulkanCmdBuffer *cmd_buffer)
+gulkan_queue_free_cmd_buffer (GulkanQueue *self, GulkanCmdBuffer *cmd_buffer)
 {
   g_mutex_lock (&self->pool_mutex);
   g_object_unref (cmd_buffer);
@@ -172,24 +200,16 @@ gboolean
 gulkan_queue_submit (GulkanQueue *self, GulkanCmdBuffer *cmd_buffer)
 {
   VkCommandBuffer cmd_buffer_handle = gulkan_cmd_buffer_get_handle (cmd_buffer);
-  if (self->handle == VK_NULL_HANDLE)
-    {
-      g_printerr ("Trying to submit empty command buffer\n.");
-      return FALSE;
-    }
-
-  VkResult res = vkEndCommandBuffer (cmd_buffer_handle);
-  vk_check_error ("vkEndCommandBuffer", res, FALSE);
 
   g_mutex_lock (&self->queue_mutex);
   VkDevice d = gulkan_device_get_handle (self->device);
-  res = vkWaitForFences (d, 1, &self->fence, VK_TRUE, UINT64_MAX);
+  VkResult res = vkWaitForFences (d, 1, &self->fence, VK_TRUE, UINT64_MAX);
   res = vkResetFences (d, 1, &self->fence);
 
   VkSubmitInfo submit_info = {
     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
     .commandBufferCount = 1,
-    .pCommandBuffers = &cmd_buffer_handle
+    .pCommandBuffers = &cmd_buffer_handle,
   };
 
   res = vkQueueSubmit (self->handle, 1, &submit_info, self->fence);
@@ -199,6 +219,17 @@ gulkan_queue_submit (GulkanQueue *self, GulkanCmdBuffer *cmd_buffer)
   g_mutex_unlock (&self->queue_mutex);
   vk_check_error ("vkQueueSubmit", res, FALSE);
 
+  return TRUE;
+}
+
+gboolean
+gulkan_queue_end_submit (GulkanQueue *self, GulkanCmdBuffer *cmd_buffer)
+{
+  if (!gulkan_cmd_buffer_end (cmd_buffer))
+    return FALSE;
+
+  if (!gulkan_queue_submit (self, cmd_buffer))
+    return FALSE;
 
   return TRUE;
 }

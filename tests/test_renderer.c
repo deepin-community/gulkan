@@ -10,75 +10,77 @@
 #include "../examples/common/common.h"
 
 static void
-_test_without_client ()
+_test_without_context ()
 {
-  GulkanRenderer *renderer =
-    (GulkanRenderer*) g_object_new (GULKAN_TYPE_RENDERER, 0);
+  GulkanRenderer *renderer = (GulkanRenderer *)
+    g_object_new (GULKAN_TYPE_RENDERER, 0);
   g_object_unref (renderer);
 
-  GulkanSwapchainRenderer *swapchain_renderer =
-    (GulkanSwapchainRenderer*) g_object_new (GULKAN_TYPE_SWAPCHAIN_RENDERER, 0);
+  GulkanSwapchainRenderer *swapchain_renderer = (GulkanSwapchainRenderer *)
+    g_object_new (GULKAN_TYPE_SWAPCHAIN_RENDERER, 0);
   g_object_unref (swapchain_renderer);
 }
 
 static void
-_test_with_client ()
+_test_with_context ()
 {
-  GulkanClient *client = gulkan_client_new ();
-  GulkanRenderer *renderer =
-    (GulkanRenderer*) g_object_new (GULKAN_TYPE_RENDERER, 0);
-  gulkan_renderer_set_client (renderer, client);
+  GulkanContext  *context = gulkan_context_new ();
+  GulkanRenderer *renderer = (GulkanRenderer *)
+    g_object_new (GULKAN_TYPE_RENDERER, 0);
+  gulkan_renderer_set_context (renderer, context);
   g_object_unref (renderer);
 
-  client = gulkan_client_new ();
-  GulkanSwapchainRenderer *swapchain_renderer =
-    (GulkanSwapchainRenderer*) g_object_new (GULKAN_TYPE_SWAPCHAIN_RENDERER, 0);
-  gulkan_renderer_set_client (GULKAN_RENDERER (swapchain_renderer), client);
+  context = gulkan_context_new ();
+  GulkanSwapchainRenderer *swapchain_renderer = (GulkanSwapchainRenderer *)
+    g_object_new (GULKAN_TYPE_SWAPCHAIN_RENDERER, 0);
+  gulkan_renderer_set_context (GULKAN_RENDERER (swapchain_renderer), context);
   g_object_unref (swapchain_renderer);
+  g_object_unref (context);
 }
 
 static void
 _test_with_init ()
 {
-  glfwInit ();
-
-  glfwWindowHint (GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint (GLFW_RESIZABLE, GLFW_FALSE);
-  glfwWindowHint (GLFW_VISIBLE, GLFW_FALSE);
-
-  GLFWwindow *window = glfwCreateWindow (100, 100, "Test", NULL, NULL);
+  VkExtent2D    extent = {100, 100};
+  GulkanWindow *window = gulkan_window_new (extent, "Test");
   g_assert_nonnull (window);
 
-  GulkanClient *client = gulkan_client_new_glfw ();
-  VkInstance instance = gulkan_client_get_instance_handle (client);
-  VkSurfaceKHR surface;
-  VkResult res = glfwCreateWindowSurface (instance, window, NULL, &surface);
-  g_assert (res == VK_SUCCESS);
+  GSList *instance_ext_list = gulkan_window_required_extensions (window);
 
-  GulkanSwapchainRenderer *swapchain_renderer =
-    (GulkanSwapchainRenderer*) g_object_new (GULKAN_TYPE_SWAPCHAIN_RENDERER, 0);
-  gulkan_renderer_set_client (GULKAN_RENDERER (swapchain_renderer), client);
-
-  VkClearColorValue black = {
-    .float32 = { 0.0f, 0.0f, 0.0f, 1.0f },
+  const gchar *device_extensions[] = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
   };
 
-  gulkan_swapchain_renderer_initialize (swapchain_renderer,
-                                        surface, black, NULL);
+  GSList *device_ext_list = NULL;
+  for (uint64_t i = 0; i < G_N_ELEMENTS (device_extensions); i++)
+    {
+      char *device_ext = g_strdup (device_extensions[i]);
+      device_ext_list = g_slist_append (device_ext_list, device_ext);
+    }
+
+  GulkanContext *context
+    = gulkan_context_new_from_extensions (instance_ext_list, device_ext_list,
+                                          VK_NULL_HANDLE);
+
+  g_assert (gulkan_window_has_support (window, context));
+
+  g_slist_free (instance_ext_list);
+  g_slist_free (device_ext_list);
+
+  GulkanSwapchainRenderer *swapchain_renderer = (GulkanSwapchainRenderer *)
+    g_object_new (GULKAN_TYPE_SWAPCHAIN_RENDERER, 0);
+  gulkan_renderer_set_context (GULKAN_RENDERER (swapchain_renderer), context);
 
   g_object_unref (swapchain_renderer);
-
-  glfwDestroyWindow (window);
-  glfwTerminate ();
+  g_object_unref (context);
+  g_object_unref (window);
 }
 
 int
 main ()
 {
-  _test_without_client ();
-  _test_with_client ();
+  _test_without_context ();
+  _test_with_context ();
   _test_with_init ();
   return 0;
 }
-
-

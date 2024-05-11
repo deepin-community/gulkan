@@ -8,26 +8,26 @@
 #ifndef GULKAN_BUFFER_H_
 #define GULKAN_BUFFER_H_
 
-#if !defined (GULKAN_INSIDE) && !defined (GULKAN_COMPILATION)
+#if !defined(GULKAN_INSIDE) && !defined(GULKAN_COMPILATION)
 #error "Only <gulkan.h> can be included directly."
 #endif
 
 #include <glib-object.h>
+
 #include "gulkan-device.h"
 
 G_BEGIN_DECLS
 
-#define GULKAN_TYPE_BUFFER gulkan_buffer_get_type()
-G_DECLARE_FINAL_TYPE (GulkanBuffer, gulkan_buffer,
-                      GULKAN, BUFFER, GObject)
+#define GULKAN_TYPE_BUFFER gulkan_buffer_get_type ()
+G_DECLARE_FINAL_TYPE (GulkanBuffer, gulkan_buffer, GULKAN, BUFFER, GObject)
 
-GulkanBuffer*
+GulkanBuffer *
 gulkan_buffer_new (GulkanDevice         *device,
                    VkDeviceSize          size,
                    VkBufferUsageFlags    usage,
                    VkMemoryPropertyFlags properties);
 
-GulkanBuffer*
+GulkanBuffer *
 gulkan_buffer_new_from_data (GulkanDevice         *device,
                              const void           *data,
                              VkDeviceSize          size,
@@ -35,16 +35,13 @@ gulkan_buffer_new_from_data (GulkanDevice         *device,
                              VkMemoryPropertyFlags properties);
 
 gboolean
-gulkan_buffer_map (GulkanBuffer *self,
-                   void        **data);
+gulkan_buffer_map (GulkanBuffer *self, void **data);
 
 void
 gulkan_buffer_unmap (GulkanBuffer *self);
 
 gboolean
-gulkan_buffer_upload (GulkanBuffer *self,
-                      const void   *data,
-                      VkDeviceSize  size);
+gulkan_buffer_upload (GulkanBuffer *self, const void *data, VkDeviceSize size);
 
 VkBuffer
 gulkan_buffer_get_handle (GulkanBuffer *self);

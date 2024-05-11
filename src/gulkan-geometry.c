@@ -30,12 +30,10 @@ gulkan_geometry_append_axes (GulkanVertexBuffer *self,
       graphene_vec3_t color;
       graphene_vec3_init_from_float (&color, color_float);
 
-      gulkan_vertex_buffer_append_with_color (self,
-                                              &center_transformed,
+      gulkan_vertex_buffer_append_with_color (self, &center_transformed,
                                               &color);
 
       gulkan_vertex_buffer_append_with_color (self, &point, &color);
-
     }
 }
 
@@ -55,7 +53,6 @@ gulkan_geometry_append_ray (GulkanVertexBuffer *self,
   graphene_vec3_t color;
   graphene_vec3_init (&color, .8f, .8f, .9f);
 
-
   gulkan_vertex_buffer_append_with_color (self, &start, &color);
   gulkan_vertex_buffer_append_with_color (self, &end, &color);
 }
@@ -68,9 +65,9 @@ gulkan_geometry_append_plane (GulkanVertexBuffer *self,
 {
   graphene_vec4_t a, b, c, d;
   graphene_vec4_init (&a, from->x, from->y, 0, 1);
-  graphene_vec4_init (&b, to->x,   from->y, 0, 1);
-  graphene_vec4_init (&c, to->x,   to->y,   0, 1);
-  graphene_vec4_init (&d, from->x, to->y,   0, 1);
+  graphene_vec4_init (&b, to->x, from->y, 0, 1);
+  graphene_vec4_init (&c, to->x, to->y, 0, 1);
+  graphene_vec4_init (&d, from->x, to->y, 0, 1);
 
   graphene_matrix_transform_vec4 (mat, &a, &a);
   graphene_matrix_transform_vec4 (mat, &b, &b);

@@ -1,0 +1,15 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_test:
+	# Skip test due to required a vulkan driver or it failures.
+
+override_dh_auto_build:
+	dh_auto_build
+	meson build -Dapi_doc=true
+	ninja -C build gulkan-doc
+
+override_dh_missing:
+	dh_missing --list-missing

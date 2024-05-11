@@ -7,15 +7,13 @@
 
 #include "gulkan-buffer.h"
 
-#include <vulkan/vulkan.h>
-
 struct _GulkanBuffer
 {
   GObject parent;
 
   GulkanDevice *device;
 
-  VkBuffer handle;
+  VkBuffer       handle;
   VkDeviceMemory memory;
 };
 
@@ -32,7 +30,7 @@ static void
 _finalize (GObject *gobject)
 {
   GulkanBuffer *self = GULKAN_BUFFER (gobject);
-  VkDevice device = gulkan_device_get_handle (self->device);
+  VkDevice      device = gulkan_device_get_handle (self->device);
 
   if (self->handle != VK_NULL_HANDLE)
     vkDestroyBuffer (device, self->handle, NULL);
@@ -49,15 +47,32 @@ gulkan_buffer_class_init (GulkanBufferClass *klass)
   object_class->finalize = _finalize;
 }
 
+static VkDeviceSize
+_align_to_non_coherent_atom_size (GulkanBuffer *self,
+                                  VkDeviceSize  allocation_size)
+{
+  VkPhysicalDeviceProperties *props
+    = gulkan_device_get_physical_device_properties (self->device);
+  VkDeviceSize atom_size = props->limits.nonCoherentAtomSize;
+
+  VkDeviceSize r = allocation_size % atom_size;
+  return r ? allocation_size + (atom_size - r) : allocation_size;
+}
+
 static gboolean
 _create (GulkanBuffer         *self,
          VkDeviceSize          size,
          VkBufferUsageFlags    usage,
          VkMemoryPropertyFlags properties)
 {
-  VkBufferCreateInfo buffer_info =
-  {
+  VkExternalMemoryBufferCreateInfo external_info = {
+    .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO,
+    .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+  };
+
+  VkBufferCreateInfo buffer_info = {
     .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    .pNext = &external_info,
     .size = size,
     .usage = usage,
   };
@@ -72,18 +87,18 @@ _create (GulkanBuffer         *self,
 
   VkMemoryAllocateInfo alloc_info = {
     .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-    .allocationSize = requirements.size
+    .allocationSize = _align_to_non_coherent_atom_size (self,
+                                                        requirements.size),
   };
 
-  if (!gulkan_device_memory_type_from_properties (
-        self->device,
-        requirements.memoryTypeBits,
-        properties,
-        &alloc_info.memoryTypeIndex))
-  {
-    g_printerr ("Failed to find matching memoryTypeIndex for buffer\n");
-    return FALSE;
-  }
+  if (!gulkan_device_memory_type_from_properties (self->device,
+                                                  requirements.memoryTypeBits,
+                                                  properties,
+                                                  &alloc_info.memoryTypeIndex))
+    {
+      g_printerr ("Failed to find matching memoryTypeIndex for buffer\n");
+      return FALSE;
+    }
 
   res = vkAllocateMemory (device, &alloc_info, NULL, &self->memory);
   vk_check_error ("vkAllocateMemory", res, FALSE);
@@ -94,13 +109,13 @@ _create (GulkanBuffer         *self,
   return TRUE;
 }
 
-GulkanBuffer*
+GulkanBuffer *
 gulkan_buffer_new (GulkanDevice         *device,
                    VkDeviceSize          size,
                    VkBufferUsageFlags    usage,
                    VkMemoryPropertyFlags properties)
 {
-  GulkanBuffer *self = (GulkanBuffer*) g_object_new (GULKAN_TYPE_BUFFER, 0);
+  GulkanBuffer *self = (GulkanBuffer *) g_object_new (GULKAN_TYPE_BUFFER, 0);
   self->device = device;
 
   if (!_create (self, size, usage, properties))
@@ -112,14 +127,14 @@ gulkan_buffer_new (GulkanDevice         *device,
   return self;
 }
 
-GulkanBuffer*
+GulkanBuffer *
 gulkan_buffer_new_from_data (GulkanDevice         *device,
                              const void           *data,
                              VkDeviceSize          size,
                              VkBufferUsageFlags    usage,
                              VkMemoryPropertyFlags properties)
 {
-  GulkanBuffer *self = (GulkanBuffer*) g_object_new (GULKAN_TYPE_BUFFER, 0);
+  GulkanBuffer *self = (GulkanBuffer *) g_object_new (GULKAN_TYPE_BUFFER, 0);
   self->device = device;
 
   if (!_create (self, size, usage, properties))
@@ -138,8 +153,7 @@ gulkan_buffer_new_from_data (GulkanDevice         *device,
 }
 
 gboolean
-gulkan_buffer_map (GulkanBuffer *self,
-                   void        **data)
+gulkan_buffer_map (GulkanBuffer *self, void **data)
 {
   VkDevice device = gulkan_device_get_handle (self->device);
 
@@ -157,9 +171,7 @@ gulkan_buffer_unmap (GulkanBuffer *self)
 }
 
 gboolean
-gulkan_buffer_upload (GulkanBuffer  *self,
-                      const void    *data,
-                      VkDeviceSize   size)
+gulkan_buffer_upload (GulkanBuffer *self, const void *data, VkDeviceSize size)
 {
   if (data == NULL)
     {
@@ -178,7 +190,7 @@ gulkan_buffer_upload (GulkanBuffer  *self,
   VkMappedMemoryRange memory_range = {
     .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
     .memory = self->memory,
-    .size = VK_WHOLE_SIZE
+    .size = VK_WHOLE_SIZE,
   };
   VkResult res = vkFlushMappedMemoryRanges (device, 1, &memory_range);
   vk_check_error ("vkFlushMappedMemoryRanges", res, FALSE);
@@ -188,12 +200,24 @@ gulkan_buffer_upload (GulkanBuffer  *self,
   return TRUE;
 }
 
+/**
+ * gulkan_buffer_get_handle:
+ * @self: a #GulkanBuffer
+ *
+ * Returns: (transfer none): a #VkBuffer
+ */
 VkBuffer
 gulkan_buffer_get_handle (GulkanBuffer *self)
 {
   return self->handle;
 }
 
+/**
+ * gulkan_buffer_get_memory_handle:
+ * @self: a #GulkanBuffer
+ *
+ * Returns: (transfer none): a #VkDeviceMemory
+ */
 VkDeviceMemory
 gulkan_buffer_get_memory_handle (GulkanBuffer *self)
 {

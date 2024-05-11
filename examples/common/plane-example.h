@@ -12,19 +12,16 @@
 
 #include <gulkan.h>
 
-G_BEGIN_DECLS
-
-#define PLANE_TYPE_EXAMPLE plane_example_get_type()
-G_DECLARE_DERIVABLE_TYPE (PlaneExample, plane_example,
-                          PLANE, EXAMPLE, GObject)
+#define PLANE_TYPE_EXAMPLE plane_example_get_type ()
+G_DECLARE_DERIVABLE_TYPE (PlaneExample, plane_example, PLANE, EXAMPLE, GObject)
 
 struct _PlaneExampleClass
 {
   GObjectClass parent;
 
-  GulkanTexture *(*init_texture) (PlaneExample *self,
-                                  GulkanClient *client,
-                                  GdkPixbuf    *pixbuf);
+  GulkanTexture *(*init_texture) (PlaneExample  *self,
+                                  GulkanContext *context,
+                                  GdkPixbuf     *pixbuf);
 };
 
 gboolean
@@ -37,9 +34,6 @@ void
 plane_example_run (PlaneExample *self);
 
 #define GULKAN_TYPE_EXAMPLE gulkan_example_get_type ()
-G_DECLARE_FINAL_TYPE (Example, gulkan_example, GULKAN,
-                      EXAMPLE, PlaneExample)
-
-G_END_DECLS
+G_DECLARE_FINAL_TYPE (Example, gulkan_example, GULKAN, EXAMPLE, PlaneExample)
 
 #endif /* PLANE_EXAMPLE_H_ */
