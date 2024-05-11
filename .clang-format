@@ -1,9 +1,17 @@
-# glib style
 BasedOnStyle: GNU
-AlwaysBreakAfterDefinitionReturnType: All
-BreakBeforeBinaryOperators: None
-BinPackParameters: false
-SpaceAfterCStyleCast: true
-
 ColumnLimit: 80
 ContinuationIndentWidth: 2
+Cpp11BracedListStyle: true
+SpaceAfterCStyleCast: true
+BreakBeforeBraces: GNU
+AlwaysBreakAfterReturnType: All
+IndentCaseLabels: true
+PenaltyBreakAssignment: 10000
+PenaltyBreakString: 15000
+PenaltyBreakBeforeFirstCallParameter: 20000
+PenaltyBreakOpenParenthesis: 3000000
+#PenaltyExcessCharacter: 10000
+BinPackParameters: false
+
+# https://github.com/llvm/llvm-project/issues/51202
+AlignConsecutiveDeclarations: true

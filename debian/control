@@ -6,20 +6,29 @@ Build-Depends: debhelper (>= 11),
                glslang-tools,
                gtk-doc-tools,
                libcairo2-dev,
+               libdrm-dev,
+               libegl-dev,
+               libgbm-dev,
                libgdk-pixbuf-2.0-dev,
                libglew-dev,
                libglfw3-dev,
                libglib2.0-dev,
                libgraphene-1.0-dev,
+               libpango1.0-dev,
                libvulkan-dev,
-               meson
+               libwayland-dev,
+               libxcb-keysyms1-dev,
+               libxcb1-dev,
+               libxkbcommon-dev,
+               meson,
+               wayland-protocols
 Standards-Version: 4.3.0
 Section: libs
 Homepage: https://gitlab.freedesktop.org/xrdesktop/gulkan
 Vcs-Browser: https://salsa.debian.org/xrdesktop-team/gulkan
 Vcs-Git: https://salsa.debian.org/xrdesktop-team/gulkan.git
 
-Package: libgulkan-0.15-0
+Package: libgulkan-0.16-0
 Architecture: any
 Multi-Arch: same
 Depends: ${misc:Depends}, ${shlibs:Depends}
@@ -37,8 +46,8 @@ Multi-Arch: same
 Depends: libcairo2-dev,
          libgdk-pixbuf-2.0-dev,
          libgraphene-1.0-dev,
+         libgulkan-0.16-0 (= ${binary:Version}),
          libvulkan-dev,
-         libgulkan-0.15-0 (= ${binary:Version}),
          ${misc:Depends}
 Description: GLib Vulkan helper library -- development files
  GLib library for Vulkan abstraction. It provides classes for handling a

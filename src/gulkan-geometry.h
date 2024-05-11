@@ -8,7 +8,7 @@
 #ifndef GULKAN_GEOMETRY_H_
 #define GULKAN_GEOMETRY_H_
 
-#if !defined (GULKAN_INSIDE) && !defined (GULKAN_COMPILATION)
+#if !defined(GULKAN_INSIDE) && !defined(GULKAN_COMPILATION)
 #error "Only <gulkan.h> can be included directly."
 #endif
 

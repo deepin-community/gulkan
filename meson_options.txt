@@ -5,3 +5,15 @@ option('api_doc',
 )
 
 option('introspection', type : 'boolean', value : false)
+
+option('examples',
+  type: 'boolean',
+  value: true,
+  description: 'Build the examples'
+)
+
+option('tests',
+  type: 'boolean',
+  value: true,
+  description: 'Build the tests'
+)

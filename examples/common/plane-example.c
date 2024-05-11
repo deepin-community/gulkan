@@ -7,20 +7,18 @@
 
 #include "plane-example.h"
 
+#include "common.h"
 #include "plane-renderer.h"
-
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 
 typedef struct _PlaneExamplePrivate
 {
   GObject parent;
 
-  GLFWwindow *window;
-  GMainLoop *loop;
+  GulkanWindow  *window;
+  GMainLoop     *loop;
   PlaneRenderer *renderer;
-  gboolean should_quit;
-  GdkPixbuf *pixbuf;
+  gboolean       should_quit;
+  GdkPixbuf     *pixbuf;
   GulkanTexture *texture;
 } PlaneExamplePrivate;
 
@@ -37,17 +35,18 @@ plane_example_init (PlaneExample *self)
 static void
 _finalize (GObject *gobject)
 {
-  PlaneExample *self = PLANE_EXAMPLE (gobject);
+  PlaneExample        *self = PLANE_EXAMPLE (gobject);
   PlaneExamplePrivate *priv = plane_example_get_instance_private (self);
 
   g_clear_object (&priv->texture);
   g_main_loop_unref (priv->loop);
   g_object_unref (priv->pixbuf);
   g_object_unref (priv->renderer);
-  glfwDestroyWindow (priv->window);
-  glfwTerminate ();
 
   G_OBJECT_CLASS (plane_example_parent_class)->finalize (gobject);
+
+  // Wayland surface needs to be deinited after vk swapchain
+  g_object_unref (priv->window);
 }
 
 static void
@@ -57,61 +56,57 @@ plane_example_class_init (PlaneExampleClass *klass)
   object_class->finalize = _finalize;
 }
 
-static GdkPixbuf *
-_load_pixbuf (const gchar* uri)
-{
-  GError *error = NULL;
-  GdkPixbuf * pixbuf_no_alpha =
-    gdk_pixbuf_new_from_resource (uri, &error);
-
-  if (error != NULL) {
-    g_printerr ("Unable to read file: %s\n", error->message);
-    g_error_free (error);
-    return NULL;
-  } else {
-    GdkPixbuf *pixbuf = gdk_pixbuf_add_alpha (pixbuf_no_alpha, FALSE, 0, 0, 0);
-    g_object_unref (pixbuf_no_alpha);
-    return pixbuf;
-  }
-}
-
 static void
-_key_cb (GLFWwindow* window, int key,
-         int scancode, int action, int mods)
+_key_cb (GulkanWindow *window, GulkanKeyEvent *event, PlaneExample *self)
 {
-  (void) scancode;
-  (void) mods;
+  PlaneExamplePrivate *priv = plane_example_get_instance_private (self);
 
-  if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+  if (!event->is_pressed)
     {
-      PlaneExample *self = (PlaneExample*) glfwGetWindowUserPointer (window);
-      PlaneExamplePrivate *priv = plane_example_get_instance_private (self);
+      return;
+    }
+
+  if (event->key == XKB_KEY_Escape)
+    {
       priv->should_quit = TRUE;
+    }
+  else if (event->key == XKB_KEY_f)
+    {
+      gulkan_window_toggle_fullscreen (window);
     }
 }
 
 static void
-_init_glfw (PlaneExample *self, int width, int height)
+_configure_cb (GulkanWindow         *window,
+               GulkanConfigureEvent *event,
+               PlaneExample         *self)
 {
   PlaneExamplePrivate *priv = plane_example_get_instance_private (self);
+  GulkanContext       *context
+    = gulkan_renderer_get_context (GULKAN_RENDERER (priv->renderer));
+  VkInstance instance = gulkan_context_get_instance_handle (context);
 
-  glfwInit();
+  VkSurfaceKHR surface;
+  if (gulkan_window_create_surface (window, instance, &surface) != VK_SUCCESS)
+    {
+      g_printerr ("Creating surface failed.");
+      return;
+    }
 
-  glfwWindowHint (GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint (GLFW_RESIZABLE, GLFW_FALSE);
-  priv->window = glfwCreateWindow (width, height, "Gulkan", NULL, NULL);
-  glfwSetKeyCallback (priv->window, _key_cb);
-  glfwSetWindowUserPointer (priv->window, self);
+  if (!gulkan_swapchain_renderer_resize (
+        GULKAN_SWAPCHAIN_RENDERER (priv->renderer), surface, event->extent))
+    g_warning ("Resize failed.");
 }
 
 static gboolean
 _draw_cb (gpointer data)
 {
-  PlaneExample *self = (PlaneExample*) data;
+  PlaneExample        *self = (PlaneExample *) data;
   PlaneExamplePrivate *priv = plane_example_get_instance_private (self);
 
-  glfwPollEvents ();
-  if (glfwWindowShouldClose (priv->window) || priv->should_quit)
+  gulkan_window_poll_events (priv->window);
+
+  if (priv->should_quit)
     {
       g_main_loop_quit (priv->loop);
       return FALSE;
@@ -119,11 +114,15 @@ _draw_cb (gpointer data)
 
   gulkan_renderer_draw (GULKAN_RENDERER (priv->renderer));
 
-  GulkanClient *client =
-    gulkan_renderer_get_client (GULKAN_RENDERER (priv->renderer));
-  gulkan_device_wait_idle (gulkan_client_get_device (client));
-
   return TRUE;
+}
+
+static void
+_close_cb (GulkanWindow *window, PlaneExample *self)
+{
+  (void) window;
+  PlaneExamplePrivate *priv = plane_example_get_instance_private (self);
+  g_main_loop_quit (priv->loop);
 }
 
 gboolean
@@ -134,24 +133,24 @@ plane_example_initialize (PlaneExample *self,
 {
   PlaneExamplePrivate *priv = plane_example_get_instance_private (self);
 
-  priv->pixbuf = _load_pixbuf (pixbuf_uri);
+  priv->pixbuf = gdk_load_pixbuf_from_uri (pixbuf_uri);
   if (priv->pixbuf == NULL)
     return FALSE;
 
-  gint width = gdk_pixbuf_get_width (priv->pixbuf);
-  gint height = gdk_pixbuf_get_height (priv->pixbuf);
+  uint32_t width = (uint32_t) gdk_pixbuf_get_width (priv->pixbuf);
+  uint32_t height = (uint32_t) gdk_pixbuf_get_height (priv->pixbuf);
 
-  _init_glfw (self, width / 2, height / 2);
-
-  uint32_t num_glfw_extensions = 0;
-  const char** glfw_extensions;
-  glfw_extensions = glfwGetRequiredInstanceExtensions (&num_glfw_extensions);
-
-  for (uint32_t i = 0; i < num_glfw_extensions; i++)
+  VkExtent2D extent = {width / 2, height / 2};
+  priv->window = gulkan_window_new (extent, "Gulkan");
+  if (!priv->window)
     {
-      char *instance_ext = g_strdup (glfw_extensions[i]);
-      instance_ext_list = g_slist_append (instance_ext_list, instance_ext);
+      g_printerr ("Could not initialize window.\n");
+      return FALSE;
     }
+
+  GSList *window_ext_list = gulkan_window_required_extensions (priv->window);
+
+  instance_ext_list = g_slist_concat (instance_ext_list, window_ext_list);
 
   const gchar *device_extensions[] = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -163,39 +162,45 @@ plane_example_initialize (PlaneExample *self,
       device_ext_list = g_slist_append (device_ext_list, device_ext);
     }
 
-  GulkanClient *client = gulkan_client_new_from_extensions (instance_ext_list,
-                                                            device_ext_list);
-  priv->renderer = plane_renderer_new_from_client (client);
-  if (!priv->renderer)
+  GulkanContext *context
+    = gulkan_context_new_from_extensions (instance_ext_list, device_ext_list,
+                                          VK_NULL_HANDLE);
+
+  if (!gulkan_window_has_support (priv->window, context))
     {
-      g_printerr ("Unable to init plane renderer!\n");
+      g_printerr ("Window surface extension support check failed.\n");
       return FALSE;
     }
 
   g_slist_free (instance_ext_list);
   g_slist_free (device_ext_list);
 
-  VkInstance instance = gulkan_client_get_instance_handle (client);
-  VkSurfaceKHR surface;
-  VkResult res = glfwCreateWindowSurface (instance,
-                                          priv->window, NULL,
-                                         &surface);
-  vk_check_error ("glfwCreateWindowSurface", res, FALSE);
+  priv->renderer = plane_renderer_new_from_context (context);
+  if (!priv->renderer)
+    {
+      g_printerr ("Unable to init plane renderer!\n");
+      return FALSE;
+    }
 
-  g_object_unref (client);
+  g_object_unref (context);
+
+  gulkan_renderer_set_extent (GULKAN_RENDERER (priv->renderer), extent);
 
   PlaneExampleClass *klass = PLANE_EXAMPLE_GET_CLASS (self);
   if (klass->init_texture == NULL)
-      return FALSE;
+    return FALSE;
 
-  priv->texture = klass->init_texture (self, client, priv->pixbuf);
+  priv->texture = klass->init_texture (self, context, priv->pixbuf);
   if (!priv->texture)
     return FALSE;
 
-  if (!plane_renderer_initialize (priv->renderer,
-                                  surface,
-                                  priv->texture))
+  if (!plane_renderer_initialize (priv->renderer, priv->texture))
     return FALSE;
+
+  g_signal_connect (priv->window, "configure", (GCallback) _configure_cb, self);
+  g_signal_connect (priv->window, "close", (GCallback) _close_cb, self);
+  g_signal_connect (priv->window, "key", (GCallback) _key_cb, self);
+
   return TRUE;
 }
 

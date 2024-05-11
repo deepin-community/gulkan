@@ -8,16 +8,17 @@
 #ifndef PLANE_RENDERER_H_
 #define PLANE_RENDERER_H_
 
-#include <stdint.h>
 #include <glib-object.h>
+#include <stdint.h>
 
 #include <gulkan.h>
 
-G_BEGIN_DECLS
-
-#define PLANE_TYPE_RENDERER plane_renderer_get_type()
-G_DECLARE_FINAL_TYPE (PlaneRenderer, plane_renderer,
-                      PLANE, RENDERER, GulkanSwapchainRenderer)
+#define PLANE_TYPE_RENDERER plane_renderer_get_type ()
+G_DECLARE_FINAL_TYPE (PlaneRenderer,
+                      plane_renderer,
+                      PLANE,
+                      RENDERER,
+                      GulkanSwapchainRenderer)
 
 struct _PlaneRendererClass
 {
@@ -28,17 +29,12 @@ PlaneRenderer *
 plane_renderer_new (void);
 
 PlaneRenderer *
-plane_renderer_new_from_client (GulkanClient *client);
+plane_renderer_new_from_context (GulkanContext *context);
 
 gboolean
-plane_renderer_initialize (PlaneRenderer *self,
-                           VkSurfaceKHR surface,
-                           GulkanTexture *texture);
+plane_renderer_initialize (PlaneRenderer *self, GulkanTexture *texture);
 
 gboolean
-plane_renderer_update_texture_descriptor (PlaneRenderer *self,
-                                          GulkanTexture *texture);
-
-G_END_DECLS
+plane_renderer_update_texture (PlaneRenderer *self, GulkanTexture *texture);
 
 #endif /* PLANE_RENDERER_H_ */

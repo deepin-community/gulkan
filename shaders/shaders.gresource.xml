@@ -6,6 +6,8 @@
     <file>cube.vert.spv</file>
     <file>cube.frag.spv</file>
     <file>toy.vert.spv</file>
+    <file>normal-map.frag.spv</file>
+    <file>normal-map.vert.spv</file>
     <file>toy.frag.template</file>
   </gresource>
 </gresources>

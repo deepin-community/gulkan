@@ -25,7 +25,7 @@ struct _GulkanFrameBuffer
   VkDeviceMemory depth_stencil_memory;
   VkImageView    depth_stencil_image_view;
 
-  VkFramebuffer  framebuffer;
+  VkFramebuffer framebuffer;
 
   VkExtent2D extent;
 
@@ -82,35 +82,43 @@ gulkan_frame_buffer_finalize (GObject *gobject)
 }
 
 static gboolean
-_create_image_view (GulkanFrameBuffer     *self,
-                    VkImage                image,
-                    VkFormat               format,
-                    VkImageAspectFlagBits  aspect_flag,
-                    VkImageView           *out_image_view)
+_create_image_view (GulkanFrameBuffer    *self,
+                    VkImage               image,
+                    VkFormat              format,
+                    VkImageAspectFlagBits aspect_flag,
+                    uint32_t              layer_count,
+                    VkImageView          *out_image_view)
 {
+  VkImageViewType view_type = VK_IMAGE_VIEW_TYPE_2D;
+
+  if (layer_count > 1)
+    {
+      view_type = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    }
+
   VkImageViewCreateInfo image_view_info = {
     .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
     .flags = 0,
     .image = image,
-    .viewType = VK_IMAGE_VIEW_TYPE_2D,
+    .viewType = view_type,
     .format = format,
     .components = {
       .r = VK_COMPONENT_SWIZZLE_IDENTITY,
       .g = VK_COMPONENT_SWIZZLE_IDENTITY,
       .b = VK_COMPONENT_SWIZZLE_IDENTITY,
-      .a = VK_COMPONENT_SWIZZLE_IDENTITY
+      .a = VK_COMPONENT_SWIZZLE_IDENTITY,
     },
     .subresourceRange = {
       .aspectMask = aspect_flag,
       .baseMipLevel = 0,
       .levelCount = 1,
       .baseArrayLayer = 0,
-      .layerCount = 1,
-    }
+      .layerCount = layer_count,
+    },
   };
 
   VkResult res = vkCreateImageView (gulkan_device_get_handle (self->device),
-                                   &image_view_info, NULL, out_image_view);
+                                    &image_view_info, NULL, out_image_view);
   vk_check_error ("vkCreateImageView", res, FALSE);
 
   return TRUE;
@@ -120,26 +128,26 @@ static VkAccessFlags
 _get_access_flags (VkImageLayout layout)
 {
   switch (layout)
-  {
-    case VK_IMAGE_LAYOUT_UNDEFINED:
-      return 0;
-    case VK_IMAGE_LAYOUT_GENERAL:
-      return VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
-    case VK_IMAGE_LAYOUT_PREINITIALIZED:
-      return VK_ACCESS_HOST_WRITE_BIT;
-    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-      return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-      return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-      return VK_ACCESS_TRANSFER_READ_BIT;
-    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-      return VK_ACCESS_TRANSFER_WRITE_BIT;
-    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-      return VK_ACCESS_SHADER_READ_BIT;
-    default:
-      g_warning ("Unhandled access mask case for layout %d.\n", layout);
-  }
+    {
+      case VK_IMAGE_LAYOUT_UNDEFINED:
+        return 0;
+      case VK_IMAGE_LAYOUT_GENERAL:
+        return VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT;
+      case VK_IMAGE_LAYOUT_PREINITIALIZED:
+        return VK_ACCESS_HOST_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        return VK_ACCESS_TRANSFER_READ_BIT;
+      case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+      case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        return VK_ACCESS_SHADER_READ_BIT;
+      default:
+        g_warning ("Unhandled access mask case for layout %d.\n", layout);
+    }
   return 0;
 }
 
@@ -157,8 +165,8 @@ _record_transfer_full (VkImage              image,
                        VkPipelineStageFlags dst_stage_mask)
 {
   GulkanQueue *gulkan_queue = gulkan_device_get_transfer_queue (device);
-  uint32_t queue_index = gulkan_queue_get_family_index (gulkan_queue);
-  GMutex *mutex = gulkan_queue_get_pool_mutex (gulkan_queue);
+  uint32_t     queue_index = gulkan_queue_get_family_index (gulkan_queue);
+  GMutex      *mutex = gulkan_queue_get_pool_mutex (gulkan_queue);
 
   VkImageMemoryBarrier image_memory_barrier =
   {
@@ -177,15 +185,12 @@ _record_transfer_full (VkImage              image,
       .layerCount = 1,
     },
     .srcQueueFamilyIndex = queue_index,
-    .dstQueueFamilyIndex = queue_index
+    .dstQueueFamilyIndex = queue_index,
   };
 
   g_mutex_lock (mutex);
-  vkCmdPipelineBarrier (cmd_buffer,
-                        src_stage_mask,
-                        dst_stage_mask,
-                        0, 0, NULL, 0, NULL, 1,
-                        &image_memory_barrier);
+  vkCmdPipelineBarrier (cmd_buffer, src_stage_mask, dst_stage_mask, 0, 0, NULL,
+                        0, NULL, 1, &image_memory_barrier);
   g_mutex_unlock (mutex);
 }
 
@@ -197,12 +202,12 @@ _transfer_layout (VkImage       image,
                   VkImageLayout src_layout,
                   VkImageLayout dst_layout)
 {
-  GulkanQueue *queue = gulkan_device_get_transfer_queue (device);
+  GulkanQueue     *queue = gulkan_device_get_transfer_queue (device);
   GulkanCmdBuffer *cmd_buffer = gulkan_queue_request_cmd_buffer (queue);
-  GMutex *mutex = gulkan_queue_get_pool_mutex (queue);
+  GMutex          *mutex = gulkan_queue_get_pool_mutex (queue);
 
   g_mutex_lock (mutex);
-  gboolean ret = gulkan_cmd_buffer_begin (cmd_buffer);
+  gboolean ret = gulkan_cmd_buffer_begin_one_time (cmd_buffer);
   g_mutex_unlock (mutex);
   if (!ret)
     return FALSE;
@@ -210,13 +215,12 @@ _transfer_layout (VkImage       image,
   _record_transfer_full (image, device, mip_levels,
                          gulkan_cmd_buffer_get_handle (cmd_buffer),
                          _get_access_flags (src_layout),
-                         _get_access_flags (dst_layout),
-                         is_depth_format,
+                         _get_access_flags (dst_layout), is_depth_format,
                          src_layout, dst_layout,
                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
                          VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
 
-  if (!gulkan_queue_submit (queue, cmd_buffer))
+  if (!gulkan_queue_end_submit (queue, cmd_buffer))
     return FALSE;
 
   gulkan_queue_free_cmd_buffer (queue, cmd_buffer);
@@ -225,19 +229,27 @@ _transfer_layout (VkImage       image,
 }
 
 static gboolean
-_init_target (GulkanFrameBuffer     *self,
-              VkSampleCountFlagBits  sample_count,
-              VkFormat               format,
-              gboolean               is_depth_format,
-              VkImageUsageFlags      usage,
-              VkImage               *out_image,
-              VkDeviceMemory        *out_memory)
+_init_target (GulkanFrameBuffer    *self,
+              VkSampleCountFlagBits sample_count,
+              VkFormat              format,
+              gboolean              is_depth_format,
+              VkImageUsageFlags     usage,
+              uint32_t              layer_count,
+              VkImage              *out_image,
+              VkDeviceMemory       *out_memory)
 {
   VkDevice vk_device = gulkan_device_get_handle (self->device);
+
+  VkExternalMemoryImageCreateInfo external_info = {
+    .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+    .pNext = NULL,
+    .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+  };
 
   /* Depth/stencil target */
   VkImageCreateInfo image_info = {
     .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+    .pNext = &external_info,
     .imageType = VK_IMAGE_TYPE_2D,
     .extent = {
       .width = self->extent.width,
@@ -245,7 +257,7 @@ _init_target (GulkanFrameBuffer     *self,
       .depth = 1,
     },
     .mipLevels = 1,
-    .arrayLayers = 1,
+    .arrayLayers = layer_count,
     .format = format,
     .tiling = VK_IMAGE_TILING_OPTIMAL,
     .samples = sample_count,
@@ -267,12 +279,11 @@ _init_target (GulkanFrameBuffer     *self,
 
   VkMemoryAllocateInfo memory_info = {
     .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-    .allocationSize = memory_requirements.size
+    .allocationSize = memory_requirements.size,
   };
   if (!gulkan_device_memory_type_from_properties (
-          self->device, memory_requirements.memoryTypeBits,
-          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-          &memory_info.memoryTypeIndex))
+        self->device, memory_requirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &memory_info.memoryTypeIndex))
     {
       g_print ("Failed to find memory type matching requirements.\n");
       return FALSE;
@@ -293,7 +304,7 @@ _init_target (GulkanFrameBuffer     *self,
     }
 
   if (!_transfer_layout (*out_image, self->device, 1, is_depth_format,
-    VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL))
+                         VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL))
     {
       /* This is not fatal, but will result in validation errors */
       g_print ("Failed to transfer image layout to GENERAL\n");
@@ -315,16 +326,15 @@ _init_frame_buffer (GulkanFrameBuffer *self, GulkanRenderPass *render_pass)
     .attachmentCount = self->use_depth ? 2 : 1,
     .pAttachments = (VkImageView[]) {
       self->color_image_view,
-      self->use_depth ? self->depth_stencil_image_view : NULL
+      self->use_depth ? self->depth_stencil_image_view : NULL,
     },
     .width = self->extent.width,
     .height = self->extent.height,
-    .layers = 1
+    .layers = 1,
   };
 
-  VkResult res = vkCreateFramebuffer (vk_device,
-                                     &framebuffer_info, NULL,
-                                     &self->framebuffer);
+  VkResult res = vkCreateFramebuffer (vk_device, &framebuffer_info, NULL,
+                                      &self->framebuffer);
   if (res != VK_SUCCESS)
     {
       g_print ("vkCreateFramebuffer failed with error %d.\n", res);
@@ -339,15 +349,16 @@ _initialize_from_image (GulkanFrameBuffer *self,
                         GulkanRenderPass  *render_pass,
                         VkImage            color_image,
                         VkExtent2D         extent,
-                        VkFormat           color_format)
+                        VkFormat           color_format,
+                        uint32_t           layer_count)
 {
   self->device = device;
   self->extent = extent;
   self->use_depth = FALSE;
 
   if (!_create_image_view (self, color_image, color_format,
-                           VK_IMAGE_ASPECT_COLOR_BIT,
-                          &self->color_image_view))
+                           VK_IMAGE_ASPECT_COLOR_BIT, layer_count,
+                           &self->color_image_view))
     return FALSE;
 
   if (!_init_frame_buffer (self, render_pass))
@@ -363,30 +374,28 @@ _initialize_from_image_with_depth (GulkanFrameBuffer    *self,
                                    VkImage               color_image,
                                    VkExtent2D            extent,
                                    VkSampleCountFlagBits sample_count,
-                                   VkFormat              color_format)
+                                   VkFormat              color_format,
+                                   uint32_t              layer_count)
 {
   self->device = device;
   self->extent = extent;
   self->use_depth = TRUE;
 
   if (!_create_image_view (self, color_image, color_format,
-                           VK_IMAGE_ASPECT_COLOR_BIT,
-                          &self->color_image_view))
+                           VK_IMAGE_ASPECT_COLOR_BIT, layer_count,
+                           &self->color_image_view))
     return FALSE;
 
-
   VkFormat depth_format = VK_FORMAT_D32_SFLOAT;
-  if (!_init_target (self, sample_count,
-                     depth_format, TRUE,
-                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+  if (!_init_target (self, sample_count, depth_format, TRUE,
+                     VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, layer_count,
                      &self->depth_stencil_image, &self->depth_stencil_memory))
     return FALSE;
 
-  if (!_create_image_view (self, self->depth_stencil_image,
-                           depth_format, VK_IMAGE_ASPECT_DEPTH_BIT,
+  if (!_create_image_view (self, self->depth_stencil_image, depth_format,
+                           VK_IMAGE_ASPECT_DEPTH_BIT, layer_count,
                            &self->depth_stencil_image_view))
     return FALSE;
-
 
   if (!_init_frame_buffer (self, render_pass))
     return FALSE;
@@ -401,32 +410,32 @@ _initialize (GulkanFrameBuffer    *self,
              VkExtent2D            extent,
              VkSampleCountFlagBits sample_count,
              VkFormat              color_format,
-             gboolean              use_depth)
+             gboolean              use_depth,
+             uint32_t              layer_count)
 {
-  VkImageUsageFlags usage =
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-        VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+                            | VK_IMAGE_USAGE_SAMPLED_BIT
+                            | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
   self->device = device;
   self->extent = extent;
 
-  if (!_init_target (self, sample_count, color_format, FALSE,
+  if (!_init_target (self, sample_count, color_format, FALSE, layer_count,
                      usage, &self->color_image, &self->color_memory))
     return FALSE;
 
   if (use_depth)
     {
       if (!_initialize_from_image_with_depth (self, device, render_pass,
-                                              self->color_image,
-                                              extent,
-                                              sample_count, color_format))
+                                              self->color_image, extent,
+                                              sample_count, color_format,
+                                              layer_count))
         return FALSE;
     }
   else
     {
-      if (!_initialize_from_image (self, device, render_pass,
-                                   self->color_image,
-                                   extent, color_format))
+      if (!_initialize_from_image (self, device, render_pass, self->color_image,
+                                   extent, color_format, layer_count))
         return FALSE;
     }
 
@@ -439,12 +448,13 @@ gulkan_frame_buffer_new (GulkanDevice         *device,
                          VkExtent2D            extent,
                          VkSampleCountFlagBits sample_count,
                          VkFormat              color_format,
-                         gboolean              use_depth)
+                         gboolean              use_depth,
+                         uint32_t              layer_count)
 {
-  GulkanFrameBuffer* self =
-    (GulkanFrameBuffer*) g_object_new (GULKAN_TYPE_FRAME_BUFFER, 0);
-  if (!_initialize (self, device, render_pass, extent,
-                    sample_count, color_format, use_depth))
+  GulkanFrameBuffer *self = (GulkanFrameBuffer *)
+    g_object_new (GULKAN_TYPE_FRAME_BUFFER, 0);
+  if (!_initialize (self, device, render_pass, extent, sample_count,
+                    color_format, use_depth, layer_count))
     {
       g_object_unref (self);
       return NULL;
@@ -453,19 +463,20 @@ gulkan_frame_buffer_new (GulkanDevice         *device,
 }
 
 GulkanFrameBuffer *
-gulkan_frame_buffer_new_from_image_with_depth (GulkanDevice         *device,
-                                               GulkanRenderPass     *render_pass,
-                                               VkImage               color_image,
-                                               VkExtent2D            extent,
-                                               VkSampleCountFlagBits sample_count,
-                                               VkFormat              color_format)
+gulkan_frame_buffer_new_from_image_with_depth (GulkanDevice     *device,
+                                               GulkanRenderPass *render_pass,
+                                               VkImage           color_image,
+                                               VkExtent2D        extent,
+                                               VkSampleCountFlagBits
+                                                        sample_count,
+                                               VkFormat color_format,
+                                               uint32_t layer_count)
 {
-  GulkanFrameBuffer* self =
-    (GulkanFrameBuffer*) g_object_new (GULKAN_TYPE_FRAME_BUFFER, 0);
+  GulkanFrameBuffer *self = (GulkanFrameBuffer *)
+    g_object_new (GULKAN_TYPE_FRAME_BUFFER, 0);
   if (!_initialize_from_image_with_depth (self, device, render_pass,
-                                          color_image,
-                                          extent,
-                                          sample_count, color_format))
+                                          color_image, extent, sample_count,
+                                          color_format, layer_count))
     {
       g_object_unref (self);
       return NULL;
@@ -478,12 +489,13 @@ gulkan_frame_buffer_new_from_image (GulkanDevice     *device,
                                     GulkanRenderPass *render_pass,
                                     VkImage           color_image,
                                     VkExtent2D        extent,
-                                    VkFormat          color_format)
+                                    VkFormat          color_format,
+                                    uint32_t          layer_count)
 {
-  GulkanFrameBuffer* self =
-    (GulkanFrameBuffer*) g_object_new (GULKAN_TYPE_FRAME_BUFFER, 0);
-  if (!_initialize_from_image (self, device, render_pass,
-                               color_image, extent, color_format))
+  GulkanFrameBuffer *self = (GulkanFrameBuffer *)
+    g_object_new (GULKAN_TYPE_FRAME_BUFFER, 0);
+  if (!_initialize_from_image (self, device, render_pass, color_image, extent,
+                               color_format, layer_count))
     {
       g_object_unref (self);
       return NULL;
@@ -491,12 +503,24 @@ gulkan_frame_buffer_new_from_image (GulkanDevice     *device,
   return self;
 }
 
+/**
+ * gulkan_frame_buffer_get_color_image:
+ * @self: a #GulkanFrameBuffer
+ *
+ * Returns: (transfer none): a #VkImage
+ */
 VkImage
 gulkan_frame_buffer_get_color_image (GulkanFrameBuffer *self)
 {
   return self->color_image;
 }
 
+/**
+ * gulkan_frame_buffer_get_handle:
+ * @self: a #GulkanFrameBuffer
+ *
+ * Returns: (transfer none): a #VkFramebuffer
+ */
 VkFramebuffer
 gulkan_frame_buffer_get_handle (GulkanFrameBuffer *self)
 {

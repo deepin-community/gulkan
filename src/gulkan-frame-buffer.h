@@ -8,24 +8,25 @@
 #ifndef GULKAN_FRAME_BUFFER_H_
 #define GULKAN_FRAME_BUFFER_H_
 
-#if !defined (GULKAN_INSIDE) && !defined (GULKAN_COMPILATION)
+#if !defined(GULKAN_INSIDE) && !defined(GULKAN_COMPILATION)
 #error "Only <gulkan.h> can be included directly."
 #endif
 
+#include <glib-object.h>
 #include <vulkan/vulkan.h>
 
-#include <gulkan-device.h>
-#include <gulkan-texture.h>
-
-#include <glib-object.h>
-
+#include "gulkan-device.h"
 #include "gulkan-render-pass.h"
+#include "gulkan-texture.h"
 
 G_BEGIN_DECLS
 
-#define GULKAN_TYPE_FRAME_BUFFER gulkan_frame_buffer_get_type()
-G_DECLARE_FINAL_TYPE (GulkanFrameBuffer, gulkan_frame_buffer,
-                      GULKAN, FRAME_BUFFER, GObject)
+#define GULKAN_TYPE_FRAME_BUFFER gulkan_frame_buffer_get_type ()
+G_DECLARE_FINAL_TYPE (GulkanFrameBuffer,
+                      gulkan_frame_buffer,
+                      GULKAN,
+                      FRAME_BUFFER,
+                      GObject)
 
 GulkanFrameBuffer *
 gulkan_frame_buffer_new (GulkanDevice         *device,
@@ -33,22 +34,26 @@ gulkan_frame_buffer_new (GulkanDevice         *device,
                          VkExtent2D            extent,
                          VkSampleCountFlagBits sample_count,
                          VkFormat              color_format,
-                         gboolean              use_depth);
+                         gboolean              use_depth,
+                         uint32_t              layer_count);
 
 GulkanFrameBuffer *
-gulkan_frame_buffer_new_from_image_with_depth (GulkanDevice         *device,
-                                               GulkanRenderPass     *render_pass,
-                                               VkImage               color_image,
-                                               VkExtent2D            extent,
-                                               VkSampleCountFlagBits sample_count,
-                                               VkFormat              color_format);
+gulkan_frame_buffer_new_from_image_with_depth (GulkanDevice     *device,
+                                               GulkanRenderPass *render_pass,
+                                               VkImage           color_image,
+                                               VkExtent2D        extent,
+                                               VkSampleCountFlagBits
+                                                        sample_count,
+                                               VkFormat color_format,
+                                               uint32_t layer_count);
 
 GulkanFrameBuffer *
 gulkan_frame_buffer_new_from_image (GulkanDevice     *device,
                                     GulkanRenderPass *render_pass,
                                     VkImage           color_image,
                                     VkExtent2D        extent,
-                                    VkFormat          color_format);
+                                    VkFormat          color_format,
+                                    uint32_t          layer_count);
 
 VkImage
 gulkan_frame_buffer_get_color_image (GulkanFrameBuffer *self);

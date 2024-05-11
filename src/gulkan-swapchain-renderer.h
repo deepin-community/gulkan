@@ -10,59 +10,46 @@
 
 #include <glib-object.h>
 
-#include "gulkan-renderer.h"
 #include "gulkan-render-pass.h"
+#include "gulkan-renderer.h"
 
 G_BEGIN_DECLS
 
-#define GULKAN_TYPE_SWAPCHAIN_RENDERER gulkan_swapchain_renderer_get_type()
-G_DECLARE_DERIVABLE_TYPE (GulkanSwapchainRenderer, gulkan_swapchain_renderer,
-                          GULKAN, SWAPCHAIN_RENDERER, GulkanRenderer)
+#define GULKAN_TYPE_SWAPCHAIN_RENDERER gulkan_swapchain_renderer_get_type ()
+G_DECLARE_DERIVABLE_TYPE (GulkanSwapchainRenderer,
+                          gulkan_swapchain_renderer,
+                          GULKAN,
+                          SWAPCHAIN_RENDERER,
+                          GulkanRenderer)
 
+/**
+ * GulkanSwapchainRendererClass:
+ * @parent: Parent class
+ * @init_draw_cmd: method to initialize a command buffer
+ * @init_pipeline: method to initialize a pipeline
+ */
 struct _GulkanSwapchainRendererClass
 {
   GulkanRendererClass parent;
 
-  void
-  (*init_draw_cmd) (GulkanSwapchainRenderer *self,
-                    VkCommandBuffer          cmd_buffer);
+  void (*init_draw_cmd) (GulkanSwapchainRenderer *self,
+                         VkCommandBuffer          cmd_buffer);
 
-  gboolean
-  (*init_pipeline) (GulkanSwapchainRenderer *self,
-                    gconstpointer            data);
+  gboolean (*init_pipeline) (GulkanSwapchainRenderer *self, gconstpointer data);
 };
 
 GulkanRenderPass *
 gulkan_swapchain_renderer_get_render_pass (GulkanSwapchainRenderer *self);
 
-VkRenderPass
-gulkan_swapchain_renderer_get_render_pass_handle (GulkanSwapchainRenderer *self);
-
-uint32_t
-gulkan_swapchain_renderer_get_swapchain_size (GulkanSwapchainRenderer *self);
-
-VkCommandBuffer
-gulkan_swapchain_renderer_get_cmd_buffer (GulkanSwapchainRenderer *self,
-                                          uint32_t index);
-
-GulkanFrameBuffer *
-gulkan_swapchain_renderer_get_frame_buffer (GulkanSwapchainRenderer *self,
-                                            uint32_t index);
-
-gboolean
+void
 gulkan_swapchain_renderer_initialize (GulkanSwapchainRenderer *self,
-                                      VkSurfaceKHR             surface,
                                       VkClearColorValue        clear_color,
                                       gconstpointer            pipeline_data);
 
-void
-gulkan_swapchain_renderer_begin_render_pass (GulkanSwapchainRenderer *self,
-                                             VkClearColorValue        clear_color,
-                                             uint32_t                 index);
-
 gboolean
 gulkan_swapchain_renderer_resize (GulkanSwapchainRenderer *self,
-                                  VkSurfaceKHR             surface);
+                                  VkSurfaceKHR             surface,
+                                  VkExtent2D               extent);
 
 gboolean
 gulkan_swapchain_renderer_init_draw_cmd_buffers (GulkanSwapchainRenderer *self);

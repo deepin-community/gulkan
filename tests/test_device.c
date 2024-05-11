@@ -18,8 +18,7 @@ _test_minimal ()
   GulkanDevice *device = gulkan_device_new ();
   g_assert_nonnull (device);
 
-  g_assert (gulkan_device_create (device, instance,
-                                         VK_NULL_HANDLE, NULL));
+  g_assert (gulkan_device_create (device, instance, VK_NULL_HANDLE, NULL));
 
   g_object_unref (device);
   g_object_unref (instance);
@@ -39,8 +38,8 @@ _test_extensions ()
   GSList *extensions = NULL;
   extensions = g_slist_append (extensions, "VK_KHR_external_memory_fd");
 
-  g_assert (gulkan_device_create (device, instance,
-                                  VK_NULL_HANDLE, extensions));
+  g_assert (gulkan_device_create (device, instance, VK_NULL_HANDLE,
+                                  extensions));
 
   g_slist_free (extensions);
 
@@ -56,5 +55,3 @@ main ()
 
   return 0;
 }
-
-

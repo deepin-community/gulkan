@@ -8,39 +8,41 @@
 #ifndef GULKAN_RENDERER_H_
 #define GULKAN_RENDERER_H_
 
-#if !defined (GULKAN_INSIDE) && !defined (GULKAN_COMPILATION)
+#if !defined(GULKAN_INSIDE) && !defined(GULKAN_COMPILATION)
 #error "Only <gulkan.h> can be included directly."
 #endif
 
-#include "gulkan-client.h"
+#include "gulkan-context.h"
 
 G_BEGIN_DECLS
 
-#define GULKAN_TYPE_RENDERER gulkan_renderer_get_type()
-G_DECLARE_DERIVABLE_TYPE (GulkanRenderer, gulkan_renderer,
-                          GULKAN, RENDERER, GObject)
+#define GULKAN_TYPE_RENDERER gulkan_renderer_get_type ()
+G_DECLARE_DERIVABLE_TYPE (GulkanRenderer,
+                          gulkan_renderer,
+                          GULKAN,
+                          RENDERER,
+                          GObject)
 
+/**
+ * GulkanRendererClass:
+ * @parent: Parent class
+ * @draw: method to draw a frame
+ */
 struct _GulkanRendererClass
 {
   GObjectClass parent;
 
-  gboolean
-  (*draw) (GulkanRenderer *self);
+  gboolean (*draw) (GulkanRenderer *self);
 };
 
-gboolean
-gulkan_renderer_create_shader_module (GulkanRenderer *self,
-                                      const gchar* resource_name,
-                                      VkShaderModule *module);
-
-GulkanClient *
-gulkan_renderer_get_client (GulkanRenderer *self);
+GulkanContext *
+gulkan_renderer_get_context (GulkanRenderer *self);
 
 VkExtent2D
 gulkan_renderer_get_extent (GulkanRenderer *self);
 
 void
-gulkan_renderer_set_client (GulkanRenderer *self, GulkanClient *client);
+gulkan_renderer_set_context (GulkanRenderer *self, GulkanContext *context);
 
 void
 gulkan_renderer_set_extent (GulkanRenderer *self, VkExtent2D extent);

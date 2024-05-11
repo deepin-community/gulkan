@@ -15,8 +15,8 @@ G_BEGIN_DECLS
 
 typedef struct _GulkanQueue GulkanQueue;
 
-GulkanCmdBuffer *gulkan_cmd_buffer_new (GulkanDevice *device,
-                                        GulkanQueue  *queue);
+GulkanCmdBuffer *
+gulkan_cmd_buffer_new (GulkanDevice *device, GulkanQueue *queue);
 
 G_END_DECLS
 

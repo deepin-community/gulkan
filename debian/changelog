@@ -1,3 +1,11 @@
+gulkan (0.16.0-0deepin1) unstable; urgency=medium
+
+  * New upstream version 0.16.0
+  * Rename shared library package for soname bump.
+  * Remove d/patches/0001-Fix-incompatible-types.patch. Already upstream.
+
+ -- Tianyu Chen <sweetyfish@deepin.org>  Sat, 11 May 2024 11:20:23 +0800
+
 gulkan (0.15.1-2.1) unstable; urgency=medium
 
   * Non-maintainer upload.

@@ -8,14 +8,13 @@
 #include "gulkan-renderer.h"
 
 #include <sys/time.h>
-
 #include <vulkan/vulkan.h>
 
 typedef struct _GulkanRendererPrivate
 {
   GObject parent;
 
-  GulkanClient *client;
+  GulkanContext *context;
 
   struct timeval start;
 
@@ -23,12 +22,10 @@ typedef struct _GulkanRendererPrivate
 
 } GulkanRendererPrivate;
 
-
 G_DEFINE_TYPE_WITH_PRIVATE (GulkanRenderer, gulkan_renderer, G_TYPE_OBJECT)
 
 static void
 gulkan_renderer_finalize (GObject *gobject);
-
 
 static void
 gulkan_renderer_class_init (GulkanRendererClass *klass)
@@ -47,73 +44,40 @@ gulkan_renderer_init (GulkanRenderer *self)
 static void
 gulkan_renderer_finalize (GObject *gobject)
 {
-  GulkanRenderer *self = GULKAN_RENDERER (gobject);
+  GulkanRenderer        *self = GULKAN_RENDERER (gobject);
   GulkanRendererPrivate *priv = gulkan_renderer_get_instance_private (self);
-  if (priv->client)
-    g_object_unref (priv->client);
+  if (priv->context)
+    g_object_unref (priv->context);
   G_OBJECT_CLASS (gulkan_renderer_parent_class)->finalize (gobject);
 }
 
-static gboolean
-_load_resource (const gchar* path, GBytes **res)
-{
-  GError *error = NULL;
-  *res = g_resources_lookup_data (path, G_RESOURCE_LOOKUP_FLAGS_NONE, &error);
-
-  if (error != NULL)
-    {
-      g_printerr ("Unable to read file: %s\n", error->message);
-      g_error_free (error);
-      return FALSE;
-    }
-
-  return TRUE;
-}
-
-gboolean
-gulkan_renderer_create_shader_module (GulkanRenderer *self,
-                                      const gchar* resource_name,
-                                      VkShaderModule *module)
-{
-  GBytes *bytes;
-  if (!_load_resource (resource_name, &bytes))
-    return FALSE;
-
-  gsize size = 0;
-  const uint32_t *buffer = g_bytes_get_data (bytes, &size);
-
-  VkShaderModuleCreateInfo info = {
-    .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-    .codeSize = size,
-    .pCode = buffer,
-  };
-
-  GulkanRendererPrivate *priv = gulkan_renderer_get_instance_private (self);
-  VkDevice device = gulkan_client_get_device_handle (priv->client);
-
-  VkResult res = vkCreateShaderModule (device, &info, NULL, module);
-  vk_check_error ("vkCreateShaderModule", res, FALSE);
-
-  g_bytes_unref (bytes);
-
-  return TRUE;
-}
-
-GulkanClient *
-gulkan_renderer_get_client (GulkanRenderer *self)
+/**
+ * gulkan_renderer_get_context:
+ * @self: a #GulkanRenderer
+ *
+ * Returns: (transfer none): a #GulkanContext
+ */
+GulkanContext *
+gulkan_renderer_get_context (GulkanRenderer *self)
 {
   GulkanRendererPrivate *priv = gulkan_renderer_get_instance_private (self);
-  return priv->client;
+  return priv->context;
 }
 
 void
-gulkan_renderer_set_client (GulkanRenderer *self, GulkanClient *client)
+gulkan_renderer_set_context (GulkanRenderer *self, GulkanContext *context)
 {
   GulkanRendererPrivate *priv = gulkan_renderer_get_instance_private (self);
-  if (priv->client != client)
-    priv->client = g_object_ref (client);
+  if (priv->context != context)
+    priv->context = g_object_ref (context);
 }
 
+/**
+ * gulkan_renderer_get_extent:
+ * @self: a #GulkanRenderer
+ *
+ * Returns: (transfer none): a #VkExtent2D
+ */
 VkExtent2D
 gulkan_renderer_get_extent (GulkanRenderer *self)
 {
@@ -156,6 +120,6 @@ gulkan_renderer_draw (GulkanRenderer *self)
 {
   GulkanRendererClass *klass = GULKAN_RENDERER_GET_CLASS (self);
   if (klass->draw == NULL)
-      return FALSE;
+    return FALSE;
   return klass->draw (self);
 }

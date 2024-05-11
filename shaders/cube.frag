@@ -32,12 +32,12 @@ main ()
       vec3 direction_reflection = reflect (-direction_light, normal);
       vec3 direction_view = normalize (-positon_view);
 
-      float specular_angle =
-        max (dot (direction_reflection, direction_view), 0.0);
+      float specular_angle = max (dot (direction_reflection, direction_view),
+                                  0.0);
       specular = pow (specular_angle, shininess);
     }
 
-  out_color = vec4 (lambertian * diffuse_color.xyz +
-                      lambertian * specular * specular_color,
+  out_color = vec4 (lambertian * diffuse_color.xyz
+                      + lambertian * specular * specular_color,
                     1.0);
 }
